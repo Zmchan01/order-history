@@ -322,10 +322,12 @@ function renderChart() {
       },
       scales: {
         x: {
+          stacked: true,
           ticks: { color: inkColor, maxRotation: 0, autoSkip: true },
           grid: { display: false },
         },
         yCount: {
+          stacked: true,
           position: "left",
           beginAtZero: true,
           ticks: { color: inkColor },

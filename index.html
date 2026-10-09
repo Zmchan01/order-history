@@ -134,6 +134,21 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 }
 .row-cancelled { opacity: 0.45; }
 .row-purchased td:not(.cell-flag) { color: var(--sub); }
+
+.toggle-group { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.toggle-group button {
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 6px 14px;
+  border: none;
+  background: var(--surface);
+  color: var(--sub);
+  cursor: pointer;
+}
+.toggle-group button.active {
+  background: var(--accent-ink);
+  color: var(--bg);
+}
 .panel .caption { font-size: 0.82rem; color: var(--sub); margin: 0 0 14px; }
 
 .legend {
@@ -174,7 +189,13 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   <section class="summary" id="summary"></section>
 
   <section class="panel">
-    <h2>月次推移</h2>
+    <div class="month-header">
+      <h2>月次推移</h2>
+      <div class="toggle-group" id="periodToggle">
+        <button type="button" data-period="month" class="active">月別</button>
+        <button type="button" data-period="year">年別</button>
+      </div>
+    </div>
     <p class="caption">棒グラフ=件数（左軸）、折れ線=金額（右軸）</p>
     <div class="chart-shell">
       <canvas id="chart"></canvas>
@@ -343,41 +364,83 @@ function readCssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-function renderChart() {
+// 月別データ(DATA)を年別に合算する（件数・金額をそれぞれ年単位でSUM）
+function buildYearlyData() {
+  const years = [];
+  const bySite = { "Amazon": { count: [], price: [] }, "メルカリShops": { count: [], price: [] } };
+  const yearIndex = {};
+
+  DATA.months.forEach((ym, i) => {
+    const year = ym.split("-")[0];
+    if (!(year in yearIndex)) {
+      yearIndex[year] = years.length;
+      years.push(year);
+      bySite["Amazon"].count.push(0);
+      bySite["Amazon"].price.push(0);
+      bySite["メルカリShops"].count.push(0);
+      bySite["メルカリShops"].price.push(0);
+    }
+    const idx = yearIndex[year];
+    bySite["Amazon"].count[idx] += DATA["Amazon"].count[i];
+    bySite["Amazon"].price[idx] += DATA["Amazon"].price[i];
+    bySite["メルカリShops"].count[idx] += DATA["メルカリShops"].count[i];
+    bySite["メルカリShops"].price[idx] += DATA["メルカリShops"].price[i];
+  });
+
+  return { labels: years, "Amazon": bySite["Amazon"], "メルカリShops": bySite["メルカリShops"] };
+}
+
+let chartInstance = null;
+let currentPeriod = "month";
+
+function renderChart(period) {
+  currentPeriod = period || currentPeriod;
   const ctx = document.getElementById("chart");
   const amazonColor = readCssVar("--amazon");
   const mercariColor = readCssVar("--mercari");
   const inkColor = readCssVar("--sub");
   const gridColor = readCssVar("--line");
 
-  new Chart(ctx, {
+  const isYear = currentPeriod === "year";
+  const labels = isYear ? buildYearlyData().labels : DATA.months.map(formatMonthLabel);
+  const yearly = isYear ? buildYearlyData() : null;
+  const azCount = isYear ? yearly["Amazon"].count : DATA["Amazon"].count;
+  const azPrice = isYear ? yearly["Amazon"].price : DATA["Amazon"].price;
+  const mcCount = isYear ? yearly["メルカリShops"].count : DATA["メルカリShops"].count;
+  const mcPrice = isYear ? yearly["メルカリShops"].price : DATA["メルカリShops"].price;
+
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
+
+  chartInstance = new Chart(ctx, {
     data: {
-      labels: DATA.months.map(formatMonthLabel),
+      labels: labels,
       datasets: [
         {
           type: "bar",
           label: "Amazon 件数",
-          data: DATA["Amazon"].count,
+          data: azCount,
           backgroundColor: amazonColor,
           yAxisID: "yCount",
           order: 2,
           borderRadius: 3,
-          maxBarThickness: 14,
+          maxBarThickness: isYear ? 40 : 14,
         },
         {
           type: "bar",
           label: "メルカリ 件数",
-          data: DATA["メルカリShops"].count,
+          data: mcCount,
           backgroundColor: mercariColor,
           yAxisID: "yCount",
           order: 2,
           borderRadius: 3,
-          maxBarThickness: 14,
+          maxBarThickness: isYear ? 40 : 14,
         },
         {
           type: "line",
           label: "Amazon 金額",
-          data: DATA["Amazon"].price,
+          data: azPrice,
           borderColor: amazonColor,
           backgroundColor: amazonColor,
           yAxisID: "yPrice",
@@ -389,7 +452,7 @@ function renderChart() {
         {
           type: "line",
           label: "メルカリ 金額",
-          data: DATA["メルカリShops"].price,
+          data: mcPrice,
           borderColor: mercariColor,
           backgroundColor: mercariColor,
           yAxisID: "yPrice",
@@ -446,9 +509,21 @@ function renderChart() {
   });
 }
 
+function wirePeriodToggle() {
+  const group = document.getElementById("periodToggle");
+  group.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      group.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderChart(btn.dataset.period);
+    });
+  });
+}
+
 renderSummary();
 renderMonthSelect();
-renderChart();
+renderChart("month");
+wirePeriodToggle();
 </script>
 </body>
 </html>

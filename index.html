@@ -135,7 +135,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 .row-cancelled { opacity: 0.45; }
 .row-purchased td:not(.cell-flag) { color: var(--sub); }
 
-.toggle-group { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.toggle-group { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
 .toggle-group button {
   font-family: inherit;
   font-size: 0.82rem;
@@ -247,6 +247,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         <button type="button" data-mode="month" class="active">月別</button>
         <button type="button" data-mode="year">年別</button>
       </div>
+    </div>
+    <div class="toggle-group" id="granularityToggle">
+      <button type="button" data-granularity="month" class="active">月分け</button>
+      <button type="button" data-granularity="day">日分け</button>
     </div>
     <div class="multi-select" id="periodPicker">
       <button type="button" class="multi-select-trigger" id="periodTrigger">全期間</button>
@@ -409,8 +413,26 @@ function buildYearMonthsData(year) {
   return { labels, "Amazon": az, "メルカリShops": mc };
 }
 
+// 1ヶ月分を日別に分解する（ORDER_LISTの各行の注文日時から日を取り出して集計する）
+function buildDailyDataForMonth(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const az = { count: new Array(daysInMonth).fill(0), price: new Array(daysInMonth).fill(0) };
+  const mc = { count: new Array(daysInMonth).fill(0), price: new Array(daysInMonth).fill(0) };
+  for (const o of ORDER_LIST[ym] || []) {
+    if (!o["注文日時"]) continue;
+    const day = Number(o["注文日時"].slice(8, 10));
+    const target = o["サイト名"] === "Amazon" ? az : mc;
+    target.count[day - 1] += 1;
+    target.price[day - 1] += o["販売価格"] || 0;
+  }
+  const labels = Array.from({ length: daysInMonth }, (_, i) => `${y}/${m}/${i + 1}`);
+  return { labels, "Amazon": az, "メルカリShops": mc };
+}
+
 let chartInstance = null;
 let currentMode = "month";
+let monthGranularity = "month"; // 月別モード時のみ使う: "month"=月分け, "day"=日分け
 
 // Chart.js本体の描画処理（月別全体表示・年別ズーム表示どちらからも呼ばれる）
 function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThickness) {
@@ -554,6 +576,17 @@ function renderForSelection() {
       mcCount.push(...d["メルカリShops"].count);
       mcPrice.push(...d["メルカリShops"].price);
     }
+  } else if (monthGranularity === "day") {
+    // 「日分け」が選択されている場合、選択中の月を注文日時から日別に分解する
+    // （複数月選択時は日別に分解したものを連結して比較できるようにする）
+    for (const ym of items) {
+      const d = buildDailyDataForMonth(ym);
+      labels.push(...d.labels);
+      azCount.push(...d["Amazon"].count);
+      azPrice.push(...d["Amazon"].price);
+      mcCount.push(...d["メルカリShops"].count);
+      mcPrice.push(...d["メルカリShops"].price);
+    }
   } else {
     labels = items.map(formatMonthLabel);
     for (const ym of items) {
@@ -564,7 +597,8 @@ function renderForSelection() {
       mcPrice.push(DATA["メルカリShops"].price[i]);
     }
   }
-  renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, currentMode === "year" ? 40 : 24);
+  const barThickness = currentMode === "year" ? 40 : (currentMode === "month" && monthGranularity === "day" ? 10 : 24);
+  renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThickness);
 
   // --- 月次データ: 選択項目ごとに1行ずつ出す ---
   const tbody = document.getElementById("monthSummaryBody");
@@ -669,18 +703,35 @@ function wirePeriodDropdown() {
 
 function wireModeToggle() {
   const group = document.getElementById("modeToggle");
+  const granularityToggle = document.getElementById("granularityToggle");
   group.querySelectorAll("button").forEach((btn) => {
     btn.addEventListener("click", () => {
       group.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       currentMode = btn.dataset.mode;
+      // 日分け/月分けの切り替えは月別モードのときだけ意味があるので表示を切り替える
+      granularityToggle.hidden = currentMode !== "month";
       renderPeriodPicker();
+    });
+  });
+  granularityToggle.hidden = currentMode !== "month";
+}
+
+function wireGranularityToggle() {
+  const group = document.getElementById("granularityToggle");
+  group.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      group.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      monthGranularity = btn.dataset.granularity;
+      renderForSelection();
     });
   });
 }
 
 renderSummary();
 wireModeToggle();
+wireGranularityToggle();
 wireSelectAllCheckbox();
 wirePeriodDropdown();
 renderPeriodPicker();

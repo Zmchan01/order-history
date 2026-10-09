@@ -150,18 +150,56 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   color: var(--bg);
 }
 
-.period-select {
-  display: block;
+.multi-select {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 16px;
+}
+.multi-select-trigger {
   font-family: inherit;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
-  padding: 7px 12px;
+  padding: 7px 14px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  margin-bottom: 16px;
-  max-width: 220px;
+  cursor: pointer;
+  min-width: 180px;
+  text-align: left;
+}
+.multi-select-trigger::after { content: " ▾"; color: var(--sub); }
+.multi-select-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 18%, transparent);
+  padding: 8px;
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.multi-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.multi-select-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.multi-select-all {
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+  padding-bottom: 8px;
 }
 .panel .caption { font-size: 0.82rem; color: var(--sub); margin: 0 0 14px; }
 
@@ -210,7 +248,15 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         <button type="button" data-mode="year">年別</button>
       </div>
     </div>
-    <select class="period-select" id="periodPicker"></select>
+    <div class="multi-select" id="periodPicker">
+      <button type="button" class="multi-select-trigger" id="periodTrigger">全期間</button>
+      <div class="multi-select-panel" id="periodPanel" hidden>
+        <label class="multi-select-item multi-select-all">
+          <input type="checkbox" id="selectAllCheckbox"> 全選択
+        </label>
+        <div id="periodItemsList"></div>
+      </div>
+    </div>
     <p class="caption">棒グラフ=件数（左軸）、折れ線=金額（右軸）</p>
     <div class="chart-shell">
       <canvas id="chart"></canvas>
@@ -315,44 +361,6 @@ function formatDateTime(isoStr) {
   });
 }
 
-// 1ヶ月分のサマリー行を表に出す
-function renderMonthSummary(ym) {
-  const tbody = document.getElementById("monthSummaryBody");
-  const caption = document.getElementById("monthSummaryCaption");
-  const i = DATA.months.indexOf(ym);
-  const az = DATA["Amazon"];
-  const mc = DATA["メルカリShops"];
-  caption.textContent = formatMonthLabel(ym);
-  tbody.innerHTML = `<tr>
-    <td>${formatMonthLabel(ym)}</td>
-    <td class="site-amazon">${az.count[i]}</td>
-    <td>${formatYen(az.price[i])}</td>
-    <td class="site-mercari">${mc.count[i]}</td>
-    <td>${formatYen(mc.price[i])}</td>
-  </tr>`;
-}
-
-// 1年分（12ヶ月分）を合算してサマリー行を表に出す
-function renderYearSummary(year) {
-  const tbody = document.getElementById("monthSummaryBody");
-  const caption = document.getElementById("monthSummaryCaption");
-  const az = DATA["Amazon"];
-  const mc = DATA["メルカリShops"];
-  let azCount = 0, azPrice = 0, mcCount = 0, mcPrice = 0;
-  DATA.months.forEach((ym, i) => {
-    if (!ym.startsWith(year)) return;
-    azCount += az.count[i]; azPrice += az.price[i];
-    mcCount += mc.count[i]; mcPrice += mc.price[i];
-  });
-  caption.textContent = `${year}年`;
-  tbody.innerHTML = `<tr>
-    <td>${year}年</td>
-    <td class="site-amazon">${azCount}</td>
-    <td>${formatYen(azPrice)}</td>
-    <td class="site-mercari">${mcCount}</td>
-    <td>${formatYen(mcPrice)}</td>
-  </tr>`;
-}
 
 // 指定した月(複数可)の注文明細を一覧表示する。
 // すでに仕入済み・キャンセル済みのものは「仕入が不要」なのでグレーアウトする
@@ -512,52 +520,151 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThicknes
   });
 }
 
-function renderChartOverview() {
-  renderChartCore(
-    DATA.months.map(formatMonthLabel),
-    DATA["Amazon"].count, DATA["Amazon"].price,
-    DATA["メルカリShops"].count, DATA["メルカリShops"].price,
-    14
-  );
-}
-
-function renderChartForYear(year) {
-  const d = buildYearMonthsData(year);
-  renderChartCore(d.labels, d["Amazon"].count, d["Amazon"].price, d["メルカリShops"].count, d["メルカリShops"].price, 40);
-}
-
 function getYears() {
   return [...new Set(DATA.months.map((m) => m.split("-")[0]))];
 }
 
-// 月別推移・月次データ・注文リストをまとめて1つの選択で切り替える
-function selectPeriod(value) {
-  if (currentMode === "year") {
-    renderChartForYear(value);
-    renderYearSummary(value);
-    const months = DATA.months.filter((m) => m.startsWith(value));
-    renderOrderList(months, `${value}年`);
-  } else {
-    renderChartOverview();
-    renderMonthSummary(value);
-    renderOrderList([value], formatMonthLabel(value));
-  }
+// 現在のモードで選べる項目一覧（月別なら全月、年別なら全年）
+function allItemsForMode() {
+  return currentMode === "year" ? getYears() : DATA.months;
+}
+// 1項目（月 or 年）が対応する実際の月一覧に展開する
+function monthsForItem(item) {
+  return currentMode === "year" ? DATA.months.filter((m) => m.startsWith(item)) : [item];
+}
+function labelForItem(item) {
+  return currentMode === "year" ? `${item}年` : formatMonthLabel(item);
 }
 
-// モード（月別/年別）に応じてプルダウンの選択肢を作り直す
+let selectedSet = new Set();
+
+// 選択されている項目（複数可）をチェックし、全体の推移や個別の比較ができるように
+// グラフ・月次データ・注文リストをまとめて再描画する
+function renderForSelection() {
+  const items = allItemsForMode().filter((i) => selectedSet.has(i));
+
+  // --- グラフ用データを組み立てる（年別は各年12ヶ月分を0埋めして連結） ---
+  let labels = [], azCount = [], azPrice = [], mcCount = [], mcPrice = [];
+  if (currentMode === "year") {
+    for (const y of items) {
+      const d = buildYearMonthsData(y);
+      labels.push(...d.labels.map((l) => `${y}/${l}`));
+      azCount.push(...d["Amazon"].count);
+      azPrice.push(...d["Amazon"].price);
+      mcCount.push(...d["メルカリShops"].count);
+      mcPrice.push(...d["メルカリShops"].price);
+    }
+  } else {
+    labels = items.map(formatMonthLabel);
+    for (const ym of items) {
+      const i = DATA.months.indexOf(ym);
+      azCount.push(DATA["Amazon"].count[i]);
+      azPrice.push(DATA["Amazon"].price[i]);
+      mcCount.push(DATA["メルカリShops"].count[i]);
+      mcPrice.push(DATA["メルカリShops"].price[i]);
+    }
+  }
+  renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, currentMode === "year" ? 40 : 24);
+
+  // --- 月次データ: 選択項目ごとに1行ずつ出す ---
+  const tbody = document.getElementById("monthSummaryBody");
+  const caption = document.getElementById("monthSummaryCaption");
+  caption.textContent = items.length ? items.map(labelForItem).join("、") : "未選択";
+  let rows = "";
+  for (const item of items) {
+    let c1 = 0, p1 = 0, c2 = 0, p2 = 0;
+    for (const ym of monthsForItem(item)) {
+      const i = DATA.months.indexOf(ym);
+      if (i < 0) continue;
+      c1 += DATA["Amazon"].count[i]; p1 += DATA["Amazon"].price[i];
+      c2 += DATA["メルカリShops"].count[i]; p2 += DATA["メルカリShops"].price[i];
+    }
+    rows += `<tr>
+      <td>${labelForItem(item)}</td>
+      <td class="site-amazon">${c1}</td>
+      <td>${formatYen(p1)}</td>
+      <td class="site-mercari">${c2}</td>
+      <td>${formatYen(p2)}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = rows || `<tr><td colspan="5">選択してください</td></tr>`;
+
+  // --- 注文リスト: 選択項目に含まれる全月の注文をまとめて出す ---
+  const months = items.flatMap(monthsForItem);
+  renderOrderList(months, items.map(labelForItem).join("、") || "選択なし");
+}
+
+function updateTriggerLabel() {
+  const trigger = document.getElementById("periodTrigger");
+  const items = allItemsForMode();
+  const n = selectedSet.size;
+  if (n === 0) trigger.textContent = "未選択";
+  else if (n === items.length) trigger.textContent = "全期間";
+  else if (n <= 3) trigger.textContent = items.filter((i) => selectedSet.has(i)).map(labelForItem).join("、");
+  else trigger.textContent = `${n}件選択中`;
+}
+
+function updateSelectAllCheckbox() {
+  const all = document.querySelectorAll(".period-checkbox");
+  const allChecked = all.length > 0 && Array.from(all).every((cb) => cb.checked);
+  document.getElementById("selectAllCheckbox").checked = allChecked;
+}
+
+// モード（月別/年別）に応じて選択肢（チェックボックス）一覧を作り直す。
+// デフォルトは全選択（＝全体の推移）
 function renderPeriodPicker() {
-  const picker = document.getElementById("periodPicker");
-  const items = currentMode === "year" ? getYears() : DATA.months;
-  picker.innerHTML = items
-    .map((v) => {
-      const label = currentMode === "year" ? `${v}年` : formatMonthLabel(v);
-      return `<option value="${v}">${label}</option>`;
-    })
+  const items = allItemsForMode();
+  selectedSet = new Set(items);
+
+  const list = document.getElementById("periodItemsList");
+  list.innerHTML = items
+    .map((v) => `
+      <label class="multi-select-item">
+        <input type="checkbox" class="period-checkbox" value="${v}" checked>
+        ${labelForItem(v)}
+      </label>
+    `)
     .join("");
-  picker.onchange = () => selectPeriod(picker.value);
-  // デフォルトは最新（一覧の末尾）
-  picker.value = items[items.length - 1];
-  selectPeriod(picker.value);
+
+  list.querySelectorAll(".period-checkbox").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) selectedSet.add(cb.value);
+      else selectedSet.delete(cb.value);
+      updateSelectAllCheckbox();
+      updateTriggerLabel();
+      renderForSelection();
+    });
+  });
+
+  updateSelectAllCheckbox();
+  updateTriggerLabel();
+  renderForSelection();
+}
+
+function wireSelectAllCheckbox() {
+  document.getElementById("selectAllCheckbox").addEventListener("change", (e) => {
+    const checked = e.target.checked;
+    document.querySelectorAll(".period-checkbox").forEach((cb) => {
+      cb.checked = checked;
+      if (checked) selectedSet.add(cb.value);
+      else selectedSet.delete(cb.value);
+    });
+    updateTriggerLabel();
+    renderForSelection();
+  });
+}
+
+function wirePeriodDropdown() {
+  const trigger = document.getElementById("periodTrigger");
+  const panel = document.getElementById("periodPanel");
+  trigger.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+  });
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("periodPicker").contains(e.target)) {
+      panel.hidden = true;
+    }
+  });
 }
 
 function wireModeToggle() {
@@ -574,6 +681,8 @@ function wireModeToggle() {
 
 renderSummary();
 wireModeToggle();
+wireSelectAllCheckbox();
+wirePeriodDropdown();
 renderPeriodPicker();
 </script>
 </body>

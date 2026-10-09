@@ -149,6 +149,29 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   background: var(--accent-ink);
   color: var(--bg);
 }
+
+.period-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.pill {
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--sub);
+  cursor: pointer;
+}
+.pill.active {
+  background: var(--accent-ink);
+  color: var(--bg);
+  border-color: var(--accent-ink);
+}
 .panel .caption { font-size: 0.82rem; color: var(--sub); margin: 0 0 14px; }
 
 .legend {
@@ -191,11 +214,12 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   <section class="panel">
     <div class="month-header">
       <h2>月次推移</h2>
-      <div class="toggle-group" id="periodToggle">
-        <button type="button" data-period="month" class="active">月別</button>
-        <button type="button" data-period="year">年別</button>
+      <div class="toggle-group" id="modeToggle">
+        <button type="button" data-mode="month" class="active">月別</button>
+        <button type="button" data-mode="year">年別</button>
       </div>
     </div>
+    <div class="period-picker" id="periodPicker"></div>
     <p class="caption">棒グラフ=件数（左軸）、折れ線=金額（右軸）</p>
     <div class="chart-shell">
       <canvas id="chart"></canvas>
@@ -209,10 +233,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   </section>
 
   <section class="panel">
-    <div class="month-header">
-      <h2>月次データ</h2>
-      <select id="monthSelect"></select>
-    </div>
+    <h2>月次データ</h2>
+    <p class="caption" id="monthSummaryCaption"></p>
     <div class="table-wrap">
       <table>
         <thead>
@@ -293,12 +315,23 @@ function renderSummary() {
   `;
 }
 
-// 選択中の月だけをサマリー表に出す（以前は全月まとめて表示していた）
+function formatDateTime(isoStr) {
+  if (!isoStr) return "-";
+  const d = new Date(isoStr + "+09:00");
+  return d.toLocaleString("ja-JP", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+// 1ヶ月分のサマリー行を表に出す
 function renderMonthSummary(ym) {
   const tbody = document.getElementById("monthSummaryBody");
+  const caption = document.getElementById("monthSummaryCaption");
   const i = DATA.months.indexOf(ym);
   const az = DATA["Amazon"];
   const mc = DATA["メルカリShops"];
+  caption.textContent = formatMonthLabel(ym);
   tbody.innerHTML = `<tr>
     <td>${formatMonthLabel(ym)}</td>
     <td class="site-amazon">${az.count[i]}</td>
@@ -308,13 +341,35 @@ function renderMonthSummary(ym) {
   </tr>`;
 }
 
-// 選択中の月の注文明細を一覧表示する。
+// 1年分（12ヶ月分）を合算してサマリー行を表に出す
+function renderYearSummary(year) {
+  const tbody = document.getElementById("monthSummaryBody");
+  const caption = document.getElementById("monthSummaryCaption");
+  const az = DATA["Amazon"];
+  const mc = DATA["メルカリShops"];
+  let azCount = 0, azPrice = 0, mcCount = 0, mcPrice = 0;
+  DATA.months.forEach((ym, i) => {
+    if (!ym.startsWith(year)) return;
+    azCount += az.count[i]; azPrice += az.price[i];
+    mcCount += mc.count[i]; mcPrice += mc.price[i];
+  });
+  caption.textContent = `${year}年`;
+  tbody.innerHTML = `<tr>
+    <td>${year}年</td>
+    <td class="site-amazon">${azCount}</td>
+    <td>${formatYen(azPrice)}</td>
+    <td class="site-mercari">${mcCount}</td>
+    <td>${formatYen(mcPrice)}</td>
+  </tr>`;
+}
+
+// 指定した月(複数可)の注文明細を一覧表示する。
 // すでに仕入済み・キャンセル済みのものは「仕入が不要」なのでグレーアウトする
-function renderOrderList(ym) {
+function renderOrderList(months, label) {
   const tbody = document.getElementById("orderListBody");
   const caption = document.getElementById("orderListCaption");
-  const list = ORDER_LIST[ym] || [];
-  caption.textContent = `${formatMonthLabel(ym)} の注文: ${list.length}件`;
+  const list = months.flatMap((ym) => ORDER_LIST[ym] || []);
+  caption.textContent = `${label} の注文: ${list.length}件`;
 
   let rows = "";
   for (const o of list) {
@@ -331,83 +386,40 @@ function renderOrderList(ym) {
       <td>${formatDateTime(o["出荷日時"])}</td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="8">この月の注文はありません</td></tr>`;
-}
-
-function formatDateTime(isoStr) {
-  if (!isoStr) return "-";
-  const d = new Date(isoStr + "+09:00");
-  return d.toLocaleString("ja-JP", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-
-function renderMonthSelect() {
-  const select = document.getElementById("monthSelect");
-  select.innerHTML = DATA.months
-    .slice()
-    .reverse()
-    .map((ym) => `<option value="${ym}">${formatMonthLabel(ym)}</option>`)
-    .join("");
-  select.addEventListener("change", () => {
-    renderMonthSummary(select.value);
-    renderOrderList(select.value);
-  });
-  // デフォルトは最新月
-  select.value = DATA.months[DATA.months.length - 1];
-  renderMonthSummary(select.value);
-  renderOrderList(select.value);
+  tbody.innerHTML = rows || `<tr><td colspan="8">この期間の注文はありません</td></tr>`;
 }
 
 function readCssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// 月別データ(DATA)を年別に合算する（件数・金額をそれぞれ年単位でSUM）
-function buildYearlyData() {
-  const years = [];
-  const bySite = { "Amazon": { count: [], price: [] }, "メルカリShops": { count: [], price: [] } };
-  const yearIndex = {};
-
-  DATA.months.forEach((ym, i) => {
-    const year = ym.split("-")[0];
-    if (!(year in yearIndex)) {
-      yearIndex[year] = years.length;
-      years.push(year);
-      bySite["Amazon"].count.push(0);
-      bySite["Amazon"].price.push(0);
-      bySite["メルカリShops"].count.push(0);
-      bySite["メルカリShops"].price.push(0);
-    }
-    const idx = yearIndex[year];
-    bySite["Amazon"].count[idx] += DATA["Amazon"].count[i];
-    bySite["Amazon"].price[idx] += DATA["Amazon"].price[i];
-    bySite["メルカリShops"].count[idx] += DATA["メルカリShops"].count[i];
-    bySite["メルカリShops"].price[idx] += DATA["メルカリShops"].price[i];
-  });
-
-  return { labels: years, "Amazon": bySite["Amazon"], "メルカリShops": bySite["メルカリShops"] };
+// 指定した年の1月〜12月分を、データが無い月は0で埋めて取り出す
+function buildYearMonthsData(year) {
+  const labels = [];
+  const az = { count: [], price: [] };
+  const mc = { count: [], price: [] };
+  for (let m = 1; m <= 12; m++) {
+    const ym = `${year}-${String(m).padStart(2, "0")}`;
+    labels.push(`${m}月`);
+    const i = DATA.months.indexOf(ym);
+    az.count.push(i >= 0 ? DATA["Amazon"].count[i] : 0);
+    az.price.push(i >= 0 ? DATA["Amazon"].price[i] : 0);
+    mc.count.push(i >= 0 ? DATA["メルカリShops"].count[i] : 0);
+    mc.price.push(i >= 0 ? DATA["メルカリShops"].price[i] : 0);
+  }
+  return { labels, "Amazon": az, "メルカリShops": mc };
 }
 
 let chartInstance = null;
-let currentPeriod = "month";
+let currentMode = "month";
 
-function renderChart(period) {
-  currentPeriod = period || currentPeriod;
+// Chart.js本体の描画処理（月別全体表示・年別ズーム表示どちらからも呼ばれる）
+function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThickness) {
   const ctx = document.getElementById("chart");
   const amazonColor = readCssVar("--amazon");
   const mercariColor = readCssVar("--mercari");
   const inkColor = readCssVar("--sub");
   const gridColor = readCssVar("--line");
-
-  const isYear = currentPeriod === "year";
-  const labels = isYear ? buildYearlyData().labels : DATA.months.map(formatMonthLabel);
-  const yearly = isYear ? buildYearlyData() : null;
-  const azCount = isYear ? yearly["Amazon"].count : DATA["Amazon"].count;
-  const azPrice = isYear ? yearly["Amazon"].price : DATA["Amazon"].price;
-  const mcCount = isYear ? yearly["メルカリShops"].count : DATA["メルカリShops"].count;
-  const mcPrice = isYear ? yearly["メルカリShops"].price : DATA["メルカリShops"].price;
 
   if (chartInstance) {
     chartInstance.destroy();
@@ -425,7 +437,7 @@ function renderChart(period) {
           yAxisID: "yCount",
           order: 2,
           borderRadius: 3,
-          maxBarThickness: isYear ? 40 : 14,
+          maxBarThickness: barThickness,
         },
         {
           type: "bar",
@@ -435,7 +447,7 @@ function renderChart(period) {
           yAxisID: "yCount",
           order: 2,
           borderRadius: 3,
-          maxBarThickness: isYear ? 40 : 14,
+          maxBarThickness: barThickness,
         },
         {
           type: "line",
@@ -509,21 +521,72 @@ function renderChart(period) {
   });
 }
 
-function wirePeriodToggle() {
-  const group = document.getElementById("periodToggle");
+function renderChartOverview() {
+  renderChartCore(
+    DATA.months.map(formatMonthLabel),
+    DATA["Amazon"].count, DATA["Amazon"].price,
+    DATA["メルカリShops"].count, DATA["メルカリShops"].price,
+    14
+  );
+}
+
+function renderChartForYear(year) {
+  const d = buildYearMonthsData(year);
+  renderChartCore(d.labels, d["Amazon"].count, d["Amazon"].price, d["メルカリShops"].count, d["メルカリShops"].price, 40);
+}
+
+function getYears() {
+  return [...new Set(DATA.months.map((m) => m.split("-")[0]))];
+}
+
+// 月別推移・月次データ・注文リストをまとめて1つの選択で切り替える
+function selectPeriod(value) {
+  document.querySelectorAll("#periodPicker .pill").forEach((b) => {
+    b.classList.toggle("active", b.dataset.value === value);
+  });
+  if (currentMode === "year") {
+    renderChartForYear(value);
+    renderYearSummary(value);
+    const months = DATA.months.filter((m) => m.startsWith(value));
+    renderOrderList(months, `${value}年`);
+  } else {
+    renderChartOverview();
+    renderMonthSummary(value);
+    renderOrderList([value], formatMonthLabel(value));
+  }
+}
+
+// モード（月別/年別）に応じて選択ボタンの一覧を作り直す
+function renderPeriodPicker() {
+  const picker = document.getElementById("periodPicker");
+  const items = currentMode === "year" ? getYears() : DATA.months;
+  picker.innerHTML = items
+    .map((v) => {
+      const label = currentMode === "year" ? `${v}年` : formatMonthLabel(v);
+      return `<button type="button" class="pill" data-value="${v}">${label}</button>`;
+    })
+    .join("");
+  picker.querySelectorAll(".pill").forEach((btn) => {
+    btn.addEventListener("click", () => selectPeriod(btn.dataset.value));
+  });
+  selectPeriod(items[items.length - 1]);
+}
+
+function wireModeToggle() {
+  const group = document.getElementById("modeToggle");
   group.querySelectorAll("button").forEach((btn) => {
     btn.addEventListener("click", () => {
       group.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      renderChart(btn.dataset.period);
+      currentMode = btn.dataset.mode;
+      renderPeriodPicker();
     });
   });
 }
 
 renderSummary();
-renderMonthSelect();
-renderChart("month");
-wirePeriodToggle();
+wireModeToggle();
+renderPeriodPicker();
 </script>
 </body>
 </html>

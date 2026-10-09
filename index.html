@@ -441,10 +441,19 @@ function truncate5(s) {
 }
 
 function showDetailModal(o) {
+  // 状況は表示のみ（このポップアップ上からは変更できない。変更は一覧のプルダウンから行う）
   document.getElementById("modalContent").innerHTML = `
+    <dt>状況</dt><dd>${o["注文状況"] || "未着手"}</dd>
+    <dt>サイト名</dt><dd>${o["サイト名"]}</dd>
     <dt>注文番号</dt><dd>${o["注文番号"]}</dd>
     <dt>SKU</dt><dd>${o["SKU"] ?? ""}</dd>
     <dt>商品名</dt><dd>${o["商品名"]}</dd>
+    <dt>販売価格</dt><dd>${formatYen(o["販売価格"])}</dd>
+    <dt>卸値</dt><dd>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
+    <dt>配送サイズ</dt><dd>${o["配送サイズ"] ?? "-"}</dd>
+    <dt>配送料金</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"}</dd>
+    <dt>注文日時</dt><dd>${formatDateTime(o["注文日時"])}</dd>
+    <dt>出荷日時</dt><dd>${formatDateTime(o["出荷日時"])}</dd>
   `;
   document.getElementById("detailModal").hidden = false;
 }

@@ -835,6 +835,32 @@ renderPeriodPicker();
     renderForSelection();
   }
 })();
+
+// ページ埋め込みの注文状況は最大30分古い可能性があるため、
+// 読み込み時にSupabaseから最新の注文状況だけを取得して上書きする
+// （読み取り専用・この2列しか見えないanonキーなので安全）
+async function syncLiveStatuses() {
+  try {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/${encodeURIComponent("注文履歴")}?select=${encodeURIComponent("一意キー,注文状況")}`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    if (!resp.ok) return;
+    const liveRows = await resp.json();
+    const liveMap = new Map(liveRows.map((r) => [r["一意キー"], r["注文状況"]]));
+    for (const months of Object.values(ORDER_LIST)) {
+      for (const o of months) {
+        if (liveMap.has(o["一意キー"])) {
+          o["注文状況"] = liveMap.get(o["一意キー"]);
+        }
+      }
+    }
+    renderForSelection();
+  } catch (e) {
+    console.warn("最新の注文状況の取得に失敗しました", e);
+  }
+}
+syncLiveStatuses();
 </script>
 </body>
 </html>

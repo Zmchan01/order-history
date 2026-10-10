@@ -630,10 +630,24 @@ function formatDateTime(isoStr) {
 // すでに仕入済み・キャンセル済みのものは「仕入が不要」なのでグレーアウトする
 const STATUS_OPTIONS = ["未着手", "仕入済み", "出荷済み", "キャンセル済み"];
 
+// 未着手・仕入済み（対応が必要なもの）を優先して上に、
+// その中では注文日時が新しい順になるよう並べる
+function orderListSortKey(status) {
+  return status === "未着手" || status === "仕入済み" || !status ? 0 : 1;
+}
+function sortOrderRows(list) {
+  return list.slice().sort((a, b) => {
+    const pa = orderListSortKey(a["注文状況"]);
+    const pb = orderListSortKey(b["注文状況"]);
+    if (pa !== pb) return pa - pb;
+    return (b["注文日時"] || "").localeCompare(a["注文日時"] || "");
+  });
+}
+
 function renderOrderList(months, label) {
   const tbody = document.getElementById("orderListBody");
   const caption = document.getElementById("orderListCaption");
-  const list = months.flatMap((ym) => ORDER_LIST[ym] || []);
+  const list = sortOrderRows(months.flatMap((ym) => ORDER_LIST[ym] || []));
   caption.textContent = `${label} の注文: ${list.length}件`;
 
   let rows = "";
@@ -1080,6 +1094,7 @@ async function fetchAllOrderRows() {
     const { data, error } = await supabaseClient
       .from("注文履歴_表示用")
       .select("*")
+      .order("一意キー")
       .range(from, from + pageSize - 1);
     if (error) throw error;
     allRows = allRows.concat(data);

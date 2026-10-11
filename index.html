@@ -1185,10 +1185,13 @@ async function showDashboard() {
     ORDER_LIST = buildOrderListByMonth(rows);
     notice.hidden = true;
 
-    // このページがSupabaseからデータを取得した時刻を表示する
-    // （ライブ取得のため、常に「見ている今」の状態を反映している目印）
-    document.getElementById("lastUpdated").textContent =
-      "データ取得時刻: " + new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+    // Supabaseへ最後にデータが書き込まれた時刻（全行の書込み日時の最大値）を表示する
+    const latestWrite = rows.reduce((max, r) => {
+      return r["書込み日時"] && (!max || r["書込み日時"] > max) ? r["書込み日時"] : max;
+    }, null);
+    document.getElementById("lastUpdated").textContent = latestWrite
+      ? "最終更新日時: " + formatDateTime(latestWrite)
+      : "";
 
     renderSummary();
     renderPeriodPicker();

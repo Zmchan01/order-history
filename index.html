@@ -208,21 +208,16 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 .row-clickable:hover { background: color-mix(in srgb, var(--accent-ink) 7%, transparent); }
 .row-clickable .status-select { cursor: auto; }
 
-.img-btn {
-  font-family: inherit;
-  font-size: 0.78rem;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
+.modal-product-image {
+  display: block;
+  max-width: 100%;
+  max-height: 40vh;
+  margin: 0 auto 16px;
+  border-radius: 8px;
+  min-height: 80px;
+  color: var(--sub);
+  font-size: 0.85rem;
 }
-.img-btn:hover { background: color-mix(in srgb, var(--accent-ink) 10%, transparent); }
-
-.modal-box-image { max-width: min(90vw, 480px); text-align: center; }
-.modal-box-image .modal-scroll { padding: 20px; }
-.modal-box-image img { max-width: 100%; max-height: 70vh; border-radius: 8px; min-height: 80px; color: var(--sub); font-size: 0.85rem; }
 
 .modal-overlay {
   position: fixed;
@@ -477,7 +472,6 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
             <th>利益</th>
             <th>注文日時</th>
             <th>出荷日時</th>
-            <th>商品画像</th>
           </tr>
         </thead>
         <tbody id="orderListBody"></tbody>
@@ -490,16 +484,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   <div class="modal-box">
     <button type="button" class="modal-close" id="modalClose" aria-label="閉じる">×</button>
     <div class="modal-scroll">
+      <img id="modalImage" class="modal-product-image" alt="商品画像" hidden>
       <dl id="modalContent"></dl>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="imageModal" hidden>
-  <div class="modal-box modal-box-image">
-    <button type="button" class="modal-close" id="imageModalClose" aria-label="閉じる">×</button>
-    <div class="modal-scroll">
-      <img id="imageModalImg" alt="商品画像">
     </div>
   </div>
 </div>
@@ -558,6 +544,22 @@ function truncate5(s) {
 }
 
 function showDetailModal(o) {
+  const img = document.getElementById("modalImage");
+  if (o["画像"]) {
+    // 画像ファイルが実際には無い場合（JANはあるが画像未登録等）に備えて
+    // 読み込み失敗時は非表示にする
+    img.onerror = () => {
+      img.hidden = true;
+    };
+    img.alt = "商品画像";
+    img.src = o["画像"];
+    img.hidden = false;
+  } else {
+    img.onerror = null;
+    img.removeAttribute("src");
+    img.hidden = true;
+  }
+
   // 状況は表示のみ（このポップアップ上からは変更できない。変更は一覧のプルダウンから行う）
   document.getElementById("modalContent").innerHTML = `
     <dt>状況</dt><dd>${o["注文状況"] || "未着手"}</dd>
@@ -585,28 +587,8 @@ function findOrderByUid(id) {
   return null;
 }
 
-function showImageModal(src) {
-  const img = document.getElementById("imageModalImg");
-  // 画像ファイルが実際には無い場合（JANはあるが画像未登録等）に備えて
-  // 読み込み失敗時は代替テキストを表示する
-  img.onerror = () => {
-    img.onerror = null;
-    img.removeAttribute("src");
-    img.alt = "この商品の画像は見つかりませんでした";
-  };
-  img.alt = "商品画像";
-  img.src = src;
-  document.getElementById("imageModal").hidden = false;
-}
-
 function wireTruncateClicks() {
   document.getElementById("orderListBody").addEventListener("click", (e) => {
-    // 商品画像ボタンは画像ポップアップだけ開き、詳細ポップアップは開かない
-    const imgBtn = e.target.closest(".img-btn");
-    if (imgBtn) {
-      showImageModal(imgBtn.dataset.img);
-      return;
-    }
     // 状況プルダウンのクリックはポップアップを開かない
     if (e.target.closest(".status-select")) return;
     const row = e.target.closest(".row-clickable");
@@ -620,14 +602,6 @@ function wireTruncateClicks() {
   document.getElementById("detailModal").addEventListener("click", (e) => {
     if (e.target.id === "detailModal") {
       document.getElementById("detailModal").hidden = true;
-    }
-  });
-  document.getElementById("imageModalClose").addEventListener("click", () => {
-    document.getElementById("imageModal").hidden = true;
-  });
-  document.getElementById("imageModal").addEventListener("click", (e) => {
-    if (e.target.id === "imageModal") {
-      document.getElementById("imageModal").hidden = true;
     }
   });
 }
@@ -688,10 +662,9 @@ function renderOrderList(months, label) {
       <td>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</td>
       <td>${formatDateTime(o["注文日時"])}</td>
       <td>${formatDateTime(o["出荷日時"])}</td>
-      <td>${o["画像"] ? `<button type="button" class="img-btn" data-img="${o["画像"]}">商品画像</button>` : "-"}</td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="13">この期間の注文はありません</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="12">この期間の注文はありません</td></tr>`;
 }
 
 function readCssVar(name) {

@@ -390,6 +390,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
     <h1>注文件数・金額ダッシュボード</h1>
     <p>Amazon・メルカリShopsの月次注文件数と金額（注文日時基準・JST）</p>
     <button type="button" class="logout-button" id="logoutButton">ログアウト</button>
+    <p class="caption" id="lastUpdated"></p>
   </header>
   <p class="caption" id="loadingNotice">データを読み込み中...</p>
 
@@ -1183,6 +1184,11 @@ async function showDashboard() {
     DATA = buildMonthlyData(rows);
     ORDER_LIST = buildOrderListByMonth(rows);
     notice.hidden = true;
+
+    // このページがSupabaseからデータを取得した時刻を表示する
+    // （ライブ取得のため、常に「見ている今」の状態を反映している目印）
+    document.getElementById("lastUpdated").textContent =
+      "データ取得時刻: " + new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 
     renderSummary();
     renderPeriodPicker();

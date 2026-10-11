@@ -460,18 +460,11 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         <thead>
           <tr>
             <th>状況</th>
-            <th>サイト名</th>
-            <th>注文番号</th>
             <th>SKU</th>
             <th>数量</th>
             <th>商品名</th>
-            <th>販売価格</th>
             <th>卸値</th>
-            <th>配送サイズ</th>
-            <th>配送料金</th>
-            <th>利益</th>
             <th>注文日時</th>
-            <th>出荷日時</th>
           </tr>
         </thead>
         <tbody id="orderListBody"></tbody>
@@ -644,27 +637,19 @@ function renderOrderList(months, label) {
   for (const o of list) {
     const status = o["注文状況"] || "未着手";
     const needsNothing = status === "出荷済み" || status === "取消済み";
-    const siteClass = o["サイト名"] === "Amazon" ? "site-amazon" : "site-mercari";
     const options = STATUS_OPTIONS
       .map((s) => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`)
       .join("");
     rows += `<tr class="row-clickable ${needsNothing ? "row-cancelled" : ""}" data-id="${o["一意キー"]}">
       <td class="cell-flag"><select class="status-select" data-id="${o["一意キー"]}" data-prev="${status}">${options}</select></td>
-      <td class="${siteClass}">${o["サイト名"]}</td>
-      <td>${truncate5(o["注文番号"])}</td>
       <td>${truncate5(o["SKU"] ?? "")}</td>
       <td>${o["数量"] ?? ""}</td>
       <td>${truncate5(o["商品名"])}</td>
-      <td>${formatYen(o["販売価格"])}</td>
       <td>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</td>
-      <td>${o["配送サイズ"] ?? "-"}</td>
-      <td>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"}</td>
-      <td>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</td>
       <td>${formatDateTime(o["注文日時"])}</td>
-      <td>${formatDateTime(o["出荷日時"])}</td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="12">この期間の注文はありません</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="6">この期間の注文はありません</td></tr>`;
 }
 
 function readCssVar(name) {

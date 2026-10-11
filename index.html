@@ -364,10 +364,11 @@ table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 th:first-child, td:first-child { text-align: left; }
 .cell-wrap { text-align: left; white-space: normal; word-break: break-word; max-width: 220px; }
+.sub-line { color: var(--sub); font-size: 0.78rem; }
 thead th { color: var(--sub); font-weight: 600; font-size: 0.78rem; }
 tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .table-wrap { overflow-x: auto; }
-.order-table { min-width: 680px; }
+.order-table { min-width: 560px; }
 .site-amazon { color: var(--amazon); font-weight: 600; }
 .site-mercari { color: var(--mercari); font-weight: 600; }
 </style>
@@ -462,9 +463,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         <thead>
           <tr>
             <th>状況</th>
-            <th>SKU</th>
-            <th>数量</th>
             <th>商品名</th>
+            <th>数量</th>
             <th>卸値</th>
             <th>注文日時</th>
           </tr>
@@ -638,14 +638,13 @@ function renderOrderList(months, label) {
       .join("");
     rows += `<tr class="row-clickable ${needsNothing ? "row-cancelled" : ""}" data-id="${o["一意キー"]}">
       <td class="cell-flag"><select class="status-select" data-id="${o["一意キー"]}" data-prev="${status}">${options}</select></td>
-      <td class="cell-wrap">${o["SKU"] ?? ""}</td>
+      <td class="cell-wrap">${o["商品名"]}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
       <td>${o["数量"] ?? ""}</td>
-      <td class="cell-wrap">${o["商品名"]}</td>
       <td>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</td>
       <td>${formatDateTime(o["注文日時"])}</td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="6">この期間の注文はありません</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="5">この期間の注文はありません</td></tr>`;
 }
 
 function readCssVar(name) {
@@ -1108,12 +1107,18 @@ function buildMonthlyData(rows) {
   return data;
 }
 
-// SKUから13桁JANを抜き出し、商品画像の想定パスを返す
-// （実際に画像が存在するかはクリック時にimgの読み込み成否で判定する）
-function extractJanImagePath(sku) {
+// SKUに埋め込まれた13桁のJANを抜き出す
+function extractJan(sku) {
   if (!sku) return null;
   const m = sku.match(/\d{13}/);
-  return m ? `images/${m[0]}.jpg` : null;
+  return m ? m[0] : null;
+}
+
+// SKUから抜き出したJANで、商品画像の想定パスを返す
+// （実際に画像が存在するかはクリック時にimgの読み込み成否で判定する）
+function extractJanImagePath(sku) {
+  const jan = extractJan(sku);
+  return jan ? `images/${jan}.jpg` : null;
 }
 
 // 取得した行を、注文リスト表示用に月ごとへ整形する（取消済みも含む）
@@ -1127,6 +1132,7 @@ function buildOrderListByMonth(rows) {
       "サイト名": r["サイト名"],
       "注文番号": r["注文番号"],
       "SKU": r["SKU"],
+      "JAN": extractJan(r["SKU"]),
       "数量": r["数量"],
       "商品名": r["商品名"],
       "販売価格": r["販売価格"] != null ? Number(r["販売価格"]) : null,

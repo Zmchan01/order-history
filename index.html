@@ -363,6 +363,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 th:first-child, td:first-child { text-align: left; }
+.cell-wrap { text-align: left; white-space: normal; word-break: break-word; max-width: 220px; }
 thead th { color: var(--sub); font-weight: 600; font-size: 0.78rem; }
 tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .table-wrap { overflow-x: auto; }
@@ -530,12 +531,6 @@ function renderSummary() {
   `;
 }
 
-// 先頭5文字だけ表示し、残りは省略記号にする（クリックで全文をポップアップ表示する）
-function truncate5(s) {
-  if (!s) return "";
-  return s.length > 5 ? s.slice(0, 5) + "…" : s;
-}
-
 function showDetailModal(o) {
   const img = document.getElementById("modalImage");
   if (o["画像"]) {
@@ -642,9 +637,9 @@ function renderOrderList(months, label) {
       .join("");
     rows += `<tr class="row-clickable ${needsNothing ? "row-cancelled" : ""}" data-id="${o["一意キー"]}">
       <td class="cell-flag"><select class="status-select" data-id="${o["一意キー"]}" data-prev="${status}">${options}</select></td>
-      <td>${truncate5(o["SKU"] ?? "")}</td>
+      <td class="cell-wrap">${o["SKU"] ?? ""}</td>
       <td>${o["数量"] ?? ""}</td>
-      <td>${truncate5(o["商品名"])}</td>
+      <td class="cell-wrap">${o["商品名"]}</td>
       <td>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</td>
       <td>${formatDateTime(o["注文日時"])}</td>
     </tr>`;

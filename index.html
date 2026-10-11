@@ -367,6 +367,7 @@ th:first-child, td:first-child { text-align: left; }
 thead th { color: var(--sub); font-weight: 600; font-size: 0.78rem; }
 tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .table-wrap { overflow-x: auto; }
+.order-table { min-width: 680px; }
 .site-amazon { color: var(--amazon); font-weight: 600; }
 .site-mercari { color: var(--mercari); font-weight: 600; }
 </style>
@@ -457,7 +458,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
     <h2>注文リスト</h2>
     <p class="caption" id="orderListCaption"></p>
     <div class="table-wrap">
-      <table>
+      <table class="order-table">
         <thead>
           <tr>
             <th>状況</th>

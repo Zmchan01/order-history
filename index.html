@@ -1172,6 +1172,30 @@ function buildOrderListByMonth(rows) {
   return byMonth;
 }
 
+// 「システム状態」テーブルから、GASがGmailを最後にチェックした時刻を取得して表示する
+// （新規注文が見つかったかどうかに関わらず記録されている値）
+async function renderLastChecked() {
+  const el = document.getElementById("lastUpdated");
+  try {
+    const { data, error } = await supabaseClient
+      .from("システム状態")
+      .select("更新日時")
+      .eq("キー", "Gmail最終チェック")
+      .maybeSingle();
+    if (error || !data) {
+      el.textContent = "";
+      return;
+    }
+    // この値は「システム状態」テーブルのtimestamptz（オフセット付き）を
+    // そのまま受け取っているため、注文データ側（オフセット無しのJST文字列）用の
+    // formatDateTimeではなく、ここでJST表示に変換する
+    const checkedAt = new Date(data["更新日時"]);
+    el.textContent = "最終更新日時: " + checkedAt.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+  } catch (e) {
+    el.textContent = "";
+  }
+}
+
 // ログイン成功後に呼ばれる: データを取得して画面を組み立てる
 async function showDashboard() {
   document.getElementById("loginScreen").hidden = true;
@@ -1185,13 +1209,9 @@ async function showDashboard() {
     ORDER_LIST = buildOrderListByMonth(rows);
     notice.hidden = true;
 
-    // Supabaseへ最後にデータが書き込まれた時刻（全行の書込み日時の最大値）を表示する
-    const latestWrite = rows.reduce((max, r) => {
-      return r["書込み日時"] && (!max || r["書込み日時"] > max) ? r["書込み日時"] : max;
-    }, null);
-    document.getElementById("lastUpdated").textContent = latestWrite
-      ? "最終更新日時: " + formatDateTime(latestWrite)
-      : "";
+    // GASが「新規注文が来ていないか見に行った」時刻を表示する
+    // （新規注文の有無に関わらず、チェックに行くたびに記録されている値）
+    await renderLastChecked();
 
     renderSummary();
     renderPeriodPicker();

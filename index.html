@@ -1107,11 +1107,12 @@ function buildMonthlyData(rows) {
   return data;
 }
 
-// SKUの先頭で仕入先を判定する（a_なら自社、b_ならトイセンター、それ以外は他社）
+// SKUの先頭1文字で仕入先を判定する（aなら自社、bならトイセンター、それ以外は他社）
 function supplierLabel(sku) {
   if (!sku) return "他社";
-  if (sku.startsWith("a_")) return "自社";
-  if (sku.startsWith("b_")) return "トイセンター";
+  const head = sku.charAt(0);
+  if (head === "a") return "自社";
+  if (head === "b") return "トイセンター";
   return "他社";
 }
 

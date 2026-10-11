@@ -463,10 +463,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         <thead>
           <tr>
             <th>状況</th>
-            <th>商品名</th>
-            <th>数量</th>
-            <th>卸値</th>
-            <th>注文日時</th>
+            <th>商品名/JAN</th>
+            <th>仕入先/数量</th>
+            <th>販売価格/卸値</th>
+            <th>注文日時/出荷日時</th>
           </tr>
         </thead>
         <tbody id="orderListBody"></tbody>
@@ -639,9 +639,9 @@ function renderOrderList(months, label) {
     rows += `<tr class="row-clickable ${needsNothing ? "row-cancelled" : ""}" data-id="${o["一意キー"]}">
       <td class="cell-flag"><select class="status-select" data-id="${o["一意キー"]}" data-prev="${status}">${options}</select></td>
       <td class="cell-wrap">${o["商品名"]}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
-      <td>${o["数量"] ?? ""}</td>
-      <td>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</td>
-      <td>${formatDateTime(o["注文日時"])}</td>
+      <td>${supplierLabel(o["SKU"])}<br><span class="sub-line">${o["数量"] ?? ""}</span></td>
+      <td>${formatYen(o["販売価格"])}<br><span class="sub-line">${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</span></td>
+      <td>${formatDateTime(o["注文日時"])}<br><span class="sub-line">${formatDateTime(o["出荷日時"])}</span></td>
     </tr>`;
   }
   tbody.innerHTML = rows || `<tr><td colspan="5">この期間の注文はありません</td></tr>`;
@@ -1105,6 +1105,14 @@ function buildMonthlyData(rows) {
   }
   data.totals = totals;
   return data;
+}
+
+// SKUの先頭で仕入先を判定する（a_なら自社、b_ならトイセンター、それ以外は他社）
+function supplierLabel(sku) {
+  if (!sku) return "他社";
+  if (sku.startsWith("a_")) return "自社";
+  if (sku.startsWith("b_")) return "トイセンター";
+  return "他社";
 }
 
 // SKUに埋め込まれた13桁のJANを抜き出す

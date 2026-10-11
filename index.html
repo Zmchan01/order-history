@@ -220,7 +220,8 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 }
 .img-btn:hover { background: color-mix(in srgb, var(--accent-ink) 10%, transparent); }
 
-.modal-box-image { max-width: min(90vw, 480px); padding: 20px; text-align: center; }
+.modal-box-image { max-width: min(90vw, 480px); text-align: center; }
+.modal-box-image .modal-scroll { padding: 20px; }
 .modal-box-image img { max-width: 100%; max-height: 70vh; border-radius: 8px; min-height: 80px; color: var(--sub); font-size: 0.85rem; }
 
 .modal-overlay {
@@ -238,10 +239,17 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 24px 24px 20px;
   max-width: 480px;
   width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   box-shadow: 0 16px 40px color-mix(in srgb, var(--ink) 25%, transparent);
+}
+.modal-scroll {
+  padding: 24px 24px 20px;
+  overflow-y: auto;
 }
 .modal-close {
   position: absolute;
@@ -251,10 +259,11 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   height: 28px;
   border-radius: 50%;
   border: none;
-  background: transparent;
+  background: var(--surface);
   color: var(--sub);
   font-size: 1.1rem;
   cursor: pointer;
+  z-index: 1;
 }
 .modal-close:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 #modalContent { margin: 0; }
@@ -480,14 +489,18 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 <div class="modal-overlay" id="detailModal" hidden>
   <div class="modal-box">
     <button type="button" class="modal-close" id="modalClose" aria-label="閉じる">×</button>
-    <dl id="modalContent"></dl>
+    <div class="modal-scroll">
+      <dl id="modalContent"></dl>
+    </div>
   </div>
 </div>
 
 <div class="modal-overlay" id="imageModal" hidden>
   <div class="modal-box modal-box-image">
     <button type="button" class="modal-close" id="imageModalClose" aria-label="閉じる">×</button>
-    <img id="imageModalImg" alt="商品画像">
+    <div class="modal-scroll">
+      <img id="imageModalImg" alt="商品画像">
+    </div>
   </div>
 </div>
 

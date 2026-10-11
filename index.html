@@ -459,6 +459,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
             <th>サイト名</th>
             <th>注文番号</th>
             <th>SKU</th>
+            <th>数量</th>
             <th>商品名</th>
             <th>販売価格</th>
             <th>卸値</th>
@@ -550,6 +551,7 @@ function showDetailModal(o) {
     <dt>サイト名</dt><dd>${o["サイト名"]}</dd>
     <dt>注文番号</dt><dd>${o["注文番号"]}</dd>
     <dt>SKU</dt><dd>${o["SKU"] ?? ""}</dd>
+    <dt>数量</dt><dd>${o["数量"] ?? ""}</dd>
     <dt>商品名</dt><dd>${o["商品名"]}</dd>
     <dt>販売価格</dt><dd>${formatYen(o["販売価格"])}</dd>
     <dt>卸値</dt><dd>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
@@ -628,8 +630,8 @@ function formatDateTime(isoStr) {
 
 
 // 指定した月(複数可)の注文明細を一覧表示する。
-// すでに仕入済み・取り消し済みのものは「仕入が不要」なのでグレーアウトする
-const STATUS_OPTIONS = ["未着手", "仕入済み", "出荷済み", "取り消し済み"];
+// すでに仕入済み・取消済みのものは「仕入が不要」なのでグレーアウトする
+const STATUS_OPTIONS = ["未着手", "仕入済み", "出荷済み", "取消済み"];
 
 // 未着手・仕入済み（対応が必要なもの）を優先して上に、
 // その中では注文日時が新しい順になるよう並べる
@@ -654,7 +656,7 @@ function renderOrderList(months, label) {
   let rows = "";
   for (const o of list) {
     const status = o["注文状況"] || "未着手";
-    const needsNothing = status === "出荷済み" || status === "取り消し済み";
+    const needsNothing = status === "出荷済み" || status === "取消済み";
     const siteClass = o["サイト名"] === "Amazon" ? "site-amazon" : "site-mercari";
     const options = STATUS_OPTIONS
       .map((s) => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`)
@@ -664,6 +666,7 @@ function renderOrderList(months, label) {
       <td class="${siteClass}">${o["サイト名"]}</td>
       <td>${truncate5(o["注文番号"])}</td>
       <td>${truncate5(o["SKU"] ?? "")}</td>
+      <td>${o["数量"] ?? ""}</td>
       <td>${truncate5(o["商品名"])}</td>
       <td>${formatYen(o["販売価格"])}</td>
       <td>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</td>
@@ -997,7 +1000,7 @@ function wireStatusSelects() {
         if (target) target["注文状況"] = newStatus;
       }
       select.dataset.prev = newStatus;
-      const needsNothing = ["出荷済み", "取り消し済み"].includes(newStatus);
+      const needsNothing = ["出荷済み", "取消済み"].includes(newStatus);
       select.closest("tr").classList.toggle("row-cancelled", needsNothing);
     } catch (err) {
       alert("更新に失敗しました: " + err.message);
@@ -1105,11 +1108,11 @@ async function fetchAllOrderRows() {
   return allRows;
 }
 
-// 取得した行から、グラフ用の月次集計（取り消し済みは除外）を組み立てる
+// 取得した行から、グラフ用の月次集計（取消済みは除外）を組み立てる
 function buildMonthlyData(rows) {
   const monthly = {};
   for (const r of rows) {
-    if (r["注文状況"] === "取り消し済み") continue;
+    if (r["注文状況"] === "取消済み") continue;
     const ym = r["注文日時"] ? r["注文日時"].slice(0, 7) : null;
     if (!ym) continue;
     const site = r["サイト名"];
@@ -1146,7 +1149,7 @@ function extractJanImagePath(sku) {
   return m ? `images/${m[0]}.jpg` : null;
 }
 
-// 取得した行を、注文リスト表示用に月ごとへ整形する（取り消し済みも含む）
+// 取得した行を、注文リスト表示用に月ごとへ整形する（取消済みも含む）
 function buildOrderListByMonth(rows) {
   const byMonth = {};
   for (const r of rows) {
@@ -1157,6 +1160,7 @@ function buildOrderListByMonth(rows) {
       "サイト名": r["サイト名"],
       "注文番号": r["注文番号"],
       "SKU": r["SKU"],
+      "数量": r["数量"],
       "商品名": r["商品名"],
       "販売価格": r["販売価格"] != null ? Number(r["販売価格"]) : null,
       "卸値": r["卸値"] != null ? Number(r["卸値"]) : null,

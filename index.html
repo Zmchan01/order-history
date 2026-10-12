@@ -124,6 +124,19 @@ body {
   margin-top: 8px;
 }
 
+.period-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.period-control-label {
+  font-size: 0.8rem;
+  color: var(--sub);
+  white-space: nowrap;
+}
+
 header h1 {
   font-size: 1.5rem;
   font-weight: 700;
@@ -398,44 +411,21 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
     <h1>注文件数・金額ダッシュボード</h1>
     <p>Amazon・メルカリShopsの月次注文件数と金額（注文日時基準・JST）</p>
     <button type="button" class="logout-button" id="logoutButton">ログアウト</button>
+    <div class="period-control">
+      <span class="period-control-label">表示する範囲</span>
+      <div class="multi-select" id="periodPicker">
+        <button type="button" class="multi-select-trigger" id="periodTrigger">全期間</button>
+        <div class="multi-select-panel" id="periodPanel" hidden>
+          <label class="multi-select-item multi-select-all">
+            <input type="checkbox" id="selectAllCheckbox"> 全選択
+          </label>
+          <div id="periodItemsList"></div>
+        </div>
+      </div>
+    </div>
     <p class="caption" id="lastUpdated"></p>
   </header>
   <p class="caption" id="loadingNotice">データを読み込み中...</p>
-
-  <section class="summary" id="summary"></section>
-
-  <section class="panel">
-    <div class="month-header">
-      <h2>月次推移</h2>
-      <div class="toggle-group" id="modeToggle">
-        <button type="button" data-mode="month" class="active">月別</button>
-        <button type="button" data-mode="year">年別</button>
-      </div>
-    </div>
-    <div class="toggle-group" id="granularityToggle">
-      <button type="button" data-granularity="month" class="active">月分け</button>
-      <button type="button" data-granularity="day">日分け</button>
-    </div>
-    <div class="multi-select" id="periodPicker">
-      <button type="button" class="multi-select-trigger" id="periodTrigger">全期間</button>
-      <div class="multi-select-panel" id="periodPanel" hidden>
-        <label class="multi-select-item multi-select-all">
-          <input type="checkbox" id="selectAllCheckbox"> 全選択
-        </label>
-        <div id="periodItemsList"></div>
-      </div>
-    </div>
-    <p class="caption">棒グラフ=件数（左軸）、折れ線=金額（右軸）</p>
-    <div class="chart-shell">
-      <canvas id="chart"></canvas>
-    </div>
-    <div class="legend">
-      <span><i class="swatch bar-amazon"></i>Amazon 件数</span>
-      <span><i class="swatch bar-mercari"></i>メルカリ 件数</span>
-      <span><i class="swatch line-amazon"></i>Amazon 金額</span>
-      <span><i class="swatch line-mercari"></i>メルカリ 金額</span>
-    </div>
-  </section>
 
   <section class="panel">
     <h2>月次データ</h2>
@@ -472,6 +462,32 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         </thead>
         <tbody id="orderListBody"></tbody>
       </table>
+    </div>
+  </section>
+
+  <section class="summary" id="summary"></section>
+
+  <section class="panel">
+    <div class="month-header">
+      <h2>月次推移</h2>
+      <div class="toggle-group" id="modeToggle">
+        <button type="button" data-mode="month" class="active">月別</button>
+        <button type="button" data-mode="year">年別</button>
+      </div>
+    </div>
+    <div class="toggle-group" id="granularityToggle">
+      <button type="button" data-granularity="month" class="active">月分け</button>
+      <button type="button" data-granularity="day">日分け</button>
+    </div>
+    <p class="caption">棒グラフ=件数（左軸）、折れ線=金額（右軸）</p>
+    <div class="chart-shell">
+      <canvas id="chart"></canvas>
+    </div>
+    <div class="legend">
+      <span><i class="swatch bar-amazon"></i>Amazon 件数</span>
+      <span><i class="swatch bar-mercari"></i>メルカリ 件数</span>
+      <span><i class="swatch line-amazon"></i>Amazon 金額</span>
+      <span><i class="swatch line-mercari"></i>メルカリ 金額</span>
     </div>
   </section>
 </div>

@@ -409,7 +409,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 <div class="wrap" id="dashboardScreen" hidden>
   <header>
     <h1>注文件数・金額ダッシュボード</h1>
-    <p>Amazon・メルカリShopsの月次注文件数と金額（注文日時基準・JST）</p>
+    <p>Site_A・Site_Mの月次注文件数と金額（注文日時基準・JST）</p>
     <button type="button" class="logout-button" id="logoutButton">ログアウト</button>
     <div class="period-control">
       <span class="period-control-label">表示する範囲</span>
@@ -435,10 +435,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         <thead>
           <tr>
             <th>月</th>
-            <th>Amazon 件数</th>
-            <th>Amazon 金額</th>
-            <th>メルカリ 件数</th>
-            <th>メルカリ 金額</th>
+            <th>Site_A 件数</th>
+            <th>Site_A 金額</th>
+            <th>Site_M 件数</th>
+            <th>Site_M 金額</th>
           </tr>
         </thead>
         <tbody id="monthSummaryBody"></tbody>
@@ -484,10 +484,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       <canvas id="chart"></canvas>
     </div>
     <div class="legend">
-      <span><i class="swatch bar-amazon"></i>Amazon 件数</span>
-      <span><i class="swatch bar-mercari"></i>メルカリ 件数</span>
-      <span><i class="swatch line-amazon"></i>Amazon 金額</span>
-      <span><i class="swatch line-mercari"></i>メルカリ 金額</span>
+      <span><i class="swatch bar-amazon"></i>Site_A 件数</span>
+      <span><i class="swatch bar-mercari"></i>Site_M 件数</span>
+      <span><i class="swatch line-amazon"></i>Site_A 金額</span>
+      <span><i class="swatch line-mercari"></i>Site_M 金額</span>
     </div>
   </section>
 </div>
@@ -537,12 +537,12 @@ function renderSummary() {
       <div class="sub">${formatYen(totalPrice)}</div>
     </div>
     <div class="tile">
-      <div class="label"><span class="dot amazon"></span>Amazon</div>
+      <div class="label"><span class="dot amazon"></span>Site_A</div>
       <div class="value">${az.count.toLocaleString("ja-JP")} 件</div>
       <div class="sub">${formatYen(az.price)}</div>
     </div>
     <div class="tile">
-      <div class="label"><span class="dot mercari"></span>メルカリShops</div>
+      <div class="label"><span class="dot mercari"></span>Site_M</div>
       <div class="value">${mc.count.toLocaleString("ja-JP")} 件</div>
       <div class="sub">${formatYen(mc.price)}</div>
     </div>
@@ -569,7 +569,7 @@ function showDetailModal(o) {
   // 状況は表示のみ（このポップアップ上からは変更できない。変更は一覧のプルダウンから行う）
   document.getElementById("modalContent").innerHTML = `
     <dt>状況</dt><dd>${o["注文状況"] || "未着手"}</dd>
-    <dt>サイト名</dt><dd>${o["サイト名"]}</dd>
+    <dt>サイト名</dt><dd>${siteLabel(o["サイト名"])}</dd>
     <dt>注文番号</dt><dd>${o["注文番号"]}</dd>
     <dt>SKU</dt><dd>${o["SKU"] ?? ""}</dd>
     <dt>数量</dt><dd>${o["数量"] ?? ""}</dd>
@@ -724,7 +724,7 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThicknes
       datasets: [
         {
           type: "bar",
-          label: "Amazon 件数",
+          label: "Site_A 件数",
           data: azCount,
           backgroundColor: amazonColor,
           yAxisID: "yCount",
@@ -734,7 +734,7 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThicknes
         },
         {
           type: "bar",
-          label: "メルカリ 件数",
+          label: "Site_M 件数",
           data: mcCount,
           backgroundColor: mercariColor,
           yAxisID: "yCount",
@@ -744,7 +744,7 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThicknes
         },
         {
           type: "line",
-          label: "Amazon 金額",
+          label: "Site_A 金額",
           data: azPrice,
           borderColor: amazonColor,
           backgroundColor: amazonColor,
@@ -756,7 +756,7 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThicknes
         },
         {
           type: "line",
-          label: "メルカリ 金額",
+          label: "Site_M 金額",
           data: mcPrice,
           borderColor: mercariColor,
           backgroundColor: mercariColor,
@@ -1122,6 +1122,13 @@ function buildMonthlyData(rows) {
   }
   data.totals = totals;
   return data;
+}
+
+// サイト名の表示用ラベル（内部データのキー自体は"Amazon"/"メルカリShops"のまま変更しない）
+function siteLabel(name) {
+  if (name === "Amazon") return "Site_A";
+  if (name === "メルカリShops") return "Site_M";
+  return name;
 }
 
 // SKUの先頭1文字で仕入先を判定する（aなら自社、bならトイセンター、それ以外は他社）

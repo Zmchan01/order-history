@@ -1131,12 +1131,12 @@ function siteLabel(name) {
   return name;
 }
 
-// SKUの先頭1文字で仕入先を判定する（aなら自社、bならトイセンター、それ以外は他社）
+// SKUの先頭1文字で仕入先を判定する（aなら自社、bなら取引先、それ以外は他社）
 function supplierLabel(sku) {
   if (!sku) return "他社";
   const head = sku.charAt(0);
   if (head === "a") return "自社";
-  if (head === "b") return "トイセンター";
+  if (head === "b") return "取引先";
   return "他社";
 }
 

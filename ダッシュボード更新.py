@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import psycopg2
+from PIL import Image
 
 SITE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(SITE_DIR, ".env"))
@@ -58,6 +59,24 @@ def extract_jan(sku):
     return m.group(0) if m else None
 
 
+# サイト側の表示サイズを揃えるため、長辺がこのpxを超える画像だけ縮小する
+# （縦横比は保持。元のD:ドライブ側のファイルはコピー元なので変更しない）
+IMAGE_MAX_SIDE = 400
+
+
+# 長辺がIMAGE_MAX_SIDEを超えていれば、縦横比を保ったまま縮小する
+def resize_if_needed(path):
+    with Image.open(path) as img:
+        w, h = img.size
+        if max(w, h) <= IMAGE_MAX_SIDE:
+            return
+        if w >= h:
+            new_w, new_h = IMAGE_MAX_SIDE, round(h * IMAGE_MAX_SIDE / w)
+        else:
+            new_w, new_h = round(w * IMAGE_MAX_SIDE / h), IMAGE_MAX_SIDE
+        img.convert("RGB").resize((new_w, new_h), Image.LANCZOS).save(path, "JPEG", quality=90)
+
+
 # JANから商品画像を検索し、見つかればimages/フォルダへコピーする
 # （既にコピー済みならスキップ。戻り値は新たにコピーしたかどうか）
 def resolve_and_copy_image(jan):
@@ -72,6 +91,7 @@ def resolve_and_copy_image(jan):
         if os.path.exists(src):
             os.makedirs(IMAGES_DIR, exist_ok=True)
             shutil.copyfile(src, dest_abs)
+            resize_if_needed(dest_abs)
             return True
     return False
 

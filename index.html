@@ -163,6 +163,17 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   margin-bottom: 14px;
 }
 .month-header h2 { margin: 0; }
+.detail-button {
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.detail-button:hover { background: color-mix(in srgb, var(--accent-ink) 10%, transparent); }
 #monthSelect {
   font-family: inherit;
   font-size: 0.85rem;
@@ -229,6 +240,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   overflow: hidden;
   box-shadow: 0 16px 40px color-mix(in srgb, var(--ink) 25%, transparent);
 }
+.modal-box-wide { max-width: 720px; }
 .modal-scroll {
   padding: 24px 24px 20px;
   overflow-y: auto;
@@ -402,7 +414,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   <p class="caption" id="loadingNotice">データを読み込み中...</p>
 
   <section class="panel">
-    <h2>月次データ</h2>
+    <div class="month-header">
+      <h2>月次データ</h2>
+      <button type="button" class="detail-button" id="monthDetailButton">詳細</button>
+    </div>
     <p class="caption" id="monthSummaryCaption"></p>
     <div class="table-wrap">
       <table>
@@ -471,6 +486,29 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       <h3 id="modalTitle" class="modal-product-title"></h3>
       <img id="modalImage" class="modal-product-image" alt="商品画像" hidden>
       <dl id="modalContent"></dl>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="monthDetailModal" hidden>
+  <div class="modal-box modal-box-wide">
+    <button type="button" class="modal-close" id="monthDetailModalClose" aria-label="閉じる">×</button>
+    <div class="modal-scroll">
+      <h3 class="modal-product-title">月別の月次データ</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>月</th>
+              <th>Site_A 件数</th>
+              <th>Site_A 金額</th>
+              <th>Site_M 件数</th>
+              <th>Site_M 金額</th>
+            </tr>
+          </thead>
+          <tbody id="monthDetailBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
@@ -557,6 +595,19 @@ function wireTruncateClicks() {
   document.getElementById("detailModal").addEventListener("click", (e) => {
     if (e.target.id === "detailModal") {
       document.getElementById("detailModal").hidden = true;
+    }
+  });
+
+  document.getElementById("monthDetailButton").addEventListener("click", () => {
+    document.getElementById("monthDetailBody").innerHTML = monthDetailRowsHTML;
+    document.getElementById("monthDetailModal").hidden = false;
+  });
+  document.getElementById("monthDetailModalClose").addEventListener("click", () => {
+    document.getElementById("monthDetailModal").hidden = true;
+  });
+  document.getElementById("monthDetailModal").addEventListener("click", (e) => {
+    if (e.target.id === "monthDetailModal") {
+      document.getElementById("monthDetailModal").hidden = true;
     }
   });
 }
@@ -780,6 +831,8 @@ function labelForItem(item) {
 }
 
 let selectedSet = new Set();
+// 「詳細」ポップアップ用: 選択項目ごとの月次データ行（renderForSelectionで更新される）
+let monthDetailRowsHTML = "";
 
 // 選択されている項目（複数可）をチェックし、全体の推移や個別の比較ができるように
 // グラフ・月次データ・注文リストをまとめて再描画する
@@ -845,6 +898,26 @@ function renderForSelection() {
     </tr>`;
   }
   tbody.innerHTML = rows || `<tr><td colspan="5">選択してください</td></tr>`;
+
+  // --- 月次データの詳細（「詳細」ボタンのポップアップ用）: 選択項目ごとに1行作る ---
+  let detailRows = "";
+  for (const item of items) {
+    let c1 = 0, p1 = 0, c2 = 0, p2 = 0;
+    for (const ym of monthsForItem(item)) {
+      const i = DATA.months.indexOf(ym);
+      if (i < 0) continue;
+      c1 += DATA["Amazon"].count[i]; p1 += DATA["Amazon"].price[i];
+      c2 += DATA["メルカリShops"].count[i]; p2 += DATA["メルカリShops"].price[i];
+    }
+    detailRows += `<tr>
+      <td>${labelForItem(item)}</td>
+      <td class="site-amazon">${c1}</td>
+      <td>${formatYen(p1)}</td>
+      <td class="site-mercari">${c2}</td>
+      <td>${formatYen(p2)}</td>
+    </tr>`;
+  }
+  monthDetailRowsHTML = detailRows || `<tr><td colspan="5">選択してください</td></tr>`;
 
   // --- 注文リスト: 選択項目に含まれる全月の注文をまとめて出す ---
   const months = items.flatMap(monthsForItem);

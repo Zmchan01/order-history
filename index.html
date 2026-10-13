@@ -860,9 +860,12 @@ function labelForItem(item) {
   return currentMode === "year" ? `${item}年` : formatMonthLabel(item);
 }
 
-// 注文明細の配列から、未仕入（状況が未着手）の件数と卸値合計を算出する
+// 注文明細の配列から、未仕入（状況が未着手）の件数と卸値合計を算出する。
+// 仕入先が自社のものは仕入作業が不要なため集計対象から除く
 function mishireStatsForOrders(orders) {
-  const mishireOrders = orders.filter((o) => (o["注文状況"] || "未着手") === "未着手");
+  const mishireOrders = orders.filter(
+    (o) => (o["注文状況"] || "未着手") === "未着手" && supplierLabel(o["SKU"]) !== "自社"
+  );
   return {
     mishireCount: mishireOrders.length,
     mishireWholesale: mishireOrders.reduce((sum, o) => sum + (o["卸値"] || 0), 0),

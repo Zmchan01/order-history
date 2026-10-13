@@ -149,6 +149,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 14px;
+  margin-bottom: 16px;
 }
 .tile {
   background: var(--surface);
@@ -436,6 +437,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 
   <section class="panel">
     <h2>月次データ</h2>
+    <section class="summary" id="summary"></section>
     <p class="caption" id="monthSummaryCaption"></p>
     <div class="table-wrap">
       <table>
@@ -471,8 +473,6 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       </table>
     </div>
   </section>
-
-  <section class="summary" id="summary"></section>
 
   <section class="panel">
     <div class="month-header">

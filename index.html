@@ -145,40 +145,6 @@ header h1 {
 }
 header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 
-.summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
-}
-.tile {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.tile .label {
-  font-size: 0.78rem;
-  color: var(--sub);
-  letter-spacing: 0.04em;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-.dot.amazon { background: var(--amazon); }
-.dot.mercari { background: var(--mercari); }
-.tile .value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent-ink);
-}
-.tile .sub { font-size: 0.8rem; color: var(--sub); font-variant-numeric: tabular-nums; }
-
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -437,7 +403,6 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 
   <section class="panel">
     <h2>月次データ</h2>
-    <section class="summary" id="summary"></section>
     <p class="caption" id="monthSummaryCaption"></p>
     <div class="table-wrap">
       <table>
@@ -530,31 +495,6 @@ function formatYen(n) {
 function formatMonthLabel(ym) {
   const [y, m] = ym.split("-");
   return `${y}/${m}`;
-}
-
-function renderSummary() {
-  const el = document.getElementById("summary");
-  const az = DATA.totals["Amazon"];
-  const mc = DATA.totals["メルカリShops"];
-  const totalCount = az.count + mc.count;
-  const totalPrice = az.price + mc.price;
-  el.innerHTML = `
-    <div class="tile">
-      <div class="label">合計件数</div>
-      <div class="value">${totalCount.toLocaleString("ja-JP")} 件</div>
-      <div class="sub">${formatYen(totalPrice)}</div>
-    </div>
-    <div class="tile">
-      <div class="label"><span class="dot amazon"></span>Site_A</div>
-      <div class="value">${az.count.toLocaleString("ja-JP")} 件</div>
-      <div class="sub">${formatYen(az.price)}</div>
-    </div>
-    <div class="tile">
-      <div class="label"><span class="dot mercari"></span>Site_M</div>
-      <div class="value">${mc.count.toLocaleString("ja-JP")} 件</div>
-      <div class="sub">${formatYen(mc.price)}</div>
-    </div>
-  `;
 }
 
 function showDetailModal(o) {
@@ -1122,14 +1062,6 @@ function buildMonthlyData(rows) {
       price: months.map((m) => (monthly[m][site] || { price: 0 }).price),
     };
   }
-  const totals = {};
-  for (const site of sites) {
-    totals[site] = {
-      count: data[site].count.reduce((a, b) => a + b, 0),
-      price: data[site].price.reduce((a, b) => a + b, 0),
-    };
-  }
-  data.totals = totals;
   return data;
 }
 
@@ -1232,7 +1164,6 @@ async function showDashboard() {
     // （新規注文の有無に関わらず、チェックに行くたびに記録されている値）
     await renderLastChecked();
 
-    renderSummary();
     renderPeriodPicker();
 
     // 初期表示は「今月のみを日分けで表示」にする

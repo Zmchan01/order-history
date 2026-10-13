@@ -280,21 +280,6 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 }
 .row-purchased td:not(.cell-flag) { color: var(--sub); }
 
-.toggle-group { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
-.toggle-group button {
-  font-family: inherit;
-  font-size: 0.82rem;
-  padding: 6px 14px;
-  border: none;
-  background: var(--surface);
-  color: var(--sub);
-  cursor: pointer;
-}
-.toggle-group button.active {
-  background: var(--accent-ink);
-  color: var(--bg);
-}
-
 .multi-select {
   position: relative;
   display: inline-block;
@@ -324,7 +309,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   border-radius: 10px;
   box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 18%, transparent);
   padding: 8px;
-  min-width: 200px;
+  min-width: 240px;
   max-height: 320px;
   overflow-y: auto;
 }
@@ -346,6 +331,29 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   margin-bottom: 4px;
   padding-bottom: 8px;
 }
+
+/* 表示する範囲: 年→月→週のExcelフィルター風階層チェックボックス */
+.period-tree { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.period-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.period-tree-row:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.period-tree-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.period-tree-toggle {
+  display: inline-block;
+  width: 14px;
+  color: var(--sub);
+  cursor: pointer;
+  user-select: none;
+  text-align: center;
+}
+.period-tree-month-list { margin-left: 18px; }
+.period-tree-week-list { margin-left: 36px; }
 .panel .caption { font-size: 0.82rem; color: var(--sub); margin: 0 0 14px; }
 
 .legend {
@@ -415,7 +423,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           <label class="multi-select-item multi-select-all">
             <input type="checkbox" id="selectAllCheckbox"> 全選択
           </label>
-          <div id="periodItemsList"></div>
+          <div id="periodTreeRoot" class="period-tree"></div>
         </div>
       </div>
     </div>
@@ -466,17 +474,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   </section>
 
   <section class="panel">
-    <div class="month-header">
-      <h2>月次推移</h2>
-      <div class="toggle-group" id="modeToggle">
-        <button type="button" data-mode="month" class="active">月別</button>
-        <button type="button" data-mode="year">年別</button>
-      </div>
-    </div>
-    <div class="toggle-group" id="granularityToggle">
-      <button type="button" data-granularity="month" class="active">月分け</button>
-      <button type="button" data-granularity="day">日分け</button>
-    </div>
+    <h2>月次推移</h2>
     <p class="caption">棒グラフ=件数（左軸）、折れ線=金額（右軸）</p>
     <div class="chart-shell">
       <canvas id="chart"></canvas>
@@ -662,8 +660,8 @@ let currentOrderList = [];
 let currentOrderLabel = "";
 let orderListVisibleCount = ORDER_LIST_PAGE_SIZE;
 
-function renderOrderList(months, label) {
-  currentOrderList = sortOrderRows(months.flatMap((ym) => ORDER_LIST[ym] || []));
+function renderOrderList(orders, label) {
+  currentOrderList = sortOrderRows(orders);
   currentOrderLabel = label;
   orderListVisibleCount = ORDER_LIST_PAGE_SIZE;
   renderOrderListBody();
@@ -707,43 +705,7 @@ function readCssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// 指定した年の1月〜12月分を、データが無い月は0で埋めて取り出す
-function buildYearMonthsData(year) {
-  const labels = [];
-  const az = { count: [], price: [] };
-  const mc = { count: [], price: [] };
-  for (let m = 1; m <= 12; m++) {
-    const ym = `${year}-${String(m).padStart(2, "0")}`;
-    labels.push(`${m}月`);
-    const i = DATA.months.indexOf(ym);
-    az.count.push(i >= 0 ? DATA["Amazon"].count[i] : 0);
-    az.price.push(i >= 0 ? DATA["Amazon"].price[i] : 0);
-    mc.count.push(i >= 0 ? DATA["メルカリShops"].count[i] : 0);
-    mc.price.push(i >= 0 ? DATA["メルカリShops"].price[i] : 0);
-  }
-  return { labels, "Amazon": az, "メルカリShops": mc };
-}
-
-// 1ヶ月分を日別に分解する（ORDER_LISTの各行の注文日時から日を取り出して集計する）
-function buildDailyDataForMonth(ym) {
-  const [y, m] = ym.split("-").map(Number);
-  const daysInMonth = new Date(y, m, 0).getDate();
-  const az = { count: new Array(daysInMonth).fill(0), price: new Array(daysInMonth).fill(0) };
-  const mc = { count: new Array(daysInMonth).fill(0), price: new Array(daysInMonth).fill(0) };
-  for (const o of ORDER_LIST[ym] || []) {
-    if (!o["注文日時"]) continue;
-    const day = Number(o["注文日時"].slice(8, 10));
-    const target = o["サイト名"] === "Amazon" ? az : mc;
-    target.count[day - 1] += 1;
-    target.price[day - 1] += o["販売価格"] || 0;
-  }
-  const labels = Array.from({ length: daysInMonth }, (_, i) => `${y}/${m}/${i + 1}`);
-  return { labels, "Amazon": az, "メルカリShops": mc };
-}
-
 let chartInstance = null;
-let currentMode = "month";
-let monthGranularity = "month"; // 月別モード時のみ使う: "month"=月分け, "day"=日分け
 
 // Chart.js本体の描画処理（月別全体表示・年別ズーム表示どちらからも呼ばれる）
 function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThickness) {
@@ -853,20 +815,101 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThicknes
   });
 }
 
-function getYears() {
-  return [...new Set(DATA.months.map((m) => m.split("-")[0]))];
+// YYYY-MM-DD文字列に変換する
+function toDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// 現在のモードで選べる項目一覧（月別なら全月、年別なら全年）
-function allItemsForMode() {
-  return currentMode === "year" ? getYears() : DATA.months;
+// 指定した月(year, 1-12のmonth)を月曜始まりの週に分割する（月の境界で区切る＝週が月をまたぐ場合は分割される）
+function computeWeeksForMonth(year, month) {
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const weeks = [];
+  const cursor = new Date(firstDay);
+  const dow = (cursor.getDay() + 6) % 7; // 0=月曜 ... 6=日曜
+  cursor.setDate(cursor.getDate() - dow);
+  let idx = 1;
+  while (cursor <= lastDay) {
+    const rawEnd = new Date(cursor);
+    rawEnd.setDate(rawEnd.getDate() + 6);
+    const start = cursor < firstDay ? firstDay : new Date(cursor);
+    const end = rawEnd > lastDay ? lastDay : rawEnd;
+    weeks.push({
+      key: `${year}-${String(month).padStart(2, "0")}-W${idx}`,
+      start: toDateStr(start),
+      end: toDateStr(end),
+      label: `${start.getMonth() + 1}/${start.getDate()}〜${end.getMonth() + 1}/${end.getDate()}`,
+    });
+    cursor.setDate(cursor.getDate() + 7);
+    idx++;
+  }
+  return weeks;
 }
-// 1項目（月 or 年）が対応する実際の月一覧に展開する
-function monthsForItem(item) {
-  return currentMode === "year" ? DATA.months.filter((m) => m.startsWith(item)) : [item];
+
+// データが存在する範囲から、年→月→週の階層構造を作る（表示する範囲の選択肢に使う）
+let periodTree = {};
+function buildPeriodTree() {
+  periodTree = {};
+  for (const ym of DATA.months) {
+    const [y, m] = ym.split("-").map(Number);
+    periodTree[y] = periodTree[y] || {};
+    periodTree[y][ym] = computeWeeksForMonth(y, m);
+  }
 }
-function labelForItem(item) {
-  return currentMode === "year" ? `${item}年` : formatMonthLabel(item);
+function weeksOfYear(year) {
+  return Object.keys(periodTree[year]).sort().flatMap((ym) => periodTree[year][ym]);
+}
+function weeksOfMonth(year, ym) {
+  return periodTree[year][ym];
+}
+// 選択中の週集合に対する、与えられた週一覧のチェック状態（全部/一部/なし）
+function checkStateOf(weeks) {
+  const checked = weeks.filter((w) => selectedWeeks.has(w.key)).length;
+  if (checked === 0) return "unchecked";
+  if (checked === weeks.length) return "checked";
+  return "indeterminate";
+}
+
+// 選択中の週を、年→月→週のうち「まるごと選ばれている一番上のレベル」ごとに1項目へまとめる
+// （年を1つ選べば年単位で1本、一部の週だけ選べば週単位で1本のバー/行になる）
+function getDisplayItems() {
+  const items = [];
+  for (const year of Object.keys(periodTree).sort()) {
+    const yWeeks = weeksOfYear(year);
+    const ySelected = yWeeks.filter((w) => selectedWeeks.has(w.key));
+    if (ySelected.length === 0) continue;
+    if (ySelected.length === yWeeks.length) {
+      items.push({ label: `${year}年`, start: yWeeks[0].start, end: yWeeks[yWeeks.length - 1].end });
+      continue;
+    }
+    for (const ym of Object.keys(periodTree[year]).sort()) {
+      const mWeeks = weeksOfMonth(year, ym);
+      const mSelected = mWeeks.filter((w) => selectedWeeks.has(w.key));
+      if (mSelected.length === 0) continue;
+      if (mSelected.length === mWeeks.length) {
+        items.push({ label: formatMonthLabel(ym), start: mWeeks[0].start, end: mWeeks[mWeeks.length - 1].end });
+        continue;
+      }
+      for (const w of mWeeks) {
+        if (selectedWeeks.has(w.key)) {
+          items.push({ label: `${formatMonthLabel(ym)} ${w.label}`, start: w.start, end: w.end });
+        }
+      }
+    }
+  }
+  return items;
+}
+
+// 指定した日付範囲（YYYY-MM-DD、両端含む）に注文日時が入る注文明細を集める
+function ordersInRange(start, end) {
+  const result = [];
+  for (const ym in ORDER_LIST) {
+    for (const o of ORDER_LIST[ym]) {
+      const d = (o["注文日時"] || "").slice(0, 10);
+      if (d && d >= start && d <= end) result.push(o);
+    }
+  }
+  return result;
 }
 
 // 注文明細の配列から、未仕入（状況が未着手）の件数と卸値合計を算出する。
@@ -881,68 +924,45 @@ function mishireStatsForOrders(orders) {
   };
 }
 
-let selectedSet = new Set();
+// 選択中の週キー（真の選択状態。年・月のチェックはこれを一括操作するだけ）
+let selectedWeeks = new Set();
 // 「詳細」ポップアップ用: 選択項目ごとの月次データ行（renderForSelectionで更新される）
 let monthDetailRowsHTML = "";
 
-// 選択されている項目（複数可）をチェックし、全体の推移や個別の比較ができるように
+// 注文明細配列から、サイト別の件数・金額を集計する（取消済みは除外）
+function siteTotals(orders) {
+  let c1 = 0, p1 = 0, c2 = 0, p2 = 0;
+  for (const o of orders) {
+    if (o["注文状況"] === "取消済み") continue;
+    if (o["サイト名"] === "Amazon") { c1 += 1; p1 += o["販売価格"] || 0; }
+    else { c2 += 1; p2 += o["販売価格"] || 0; }
+  }
+  return { c1, p1, c2, p2 };
+}
+
+// 選択されている範囲（年・月・週）をチェックし、全体の推移や個別の比較ができるように
 // グラフ・月次データ・注文リストをまとめて再描画する
 function renderForSelection() {
-  const items = allItemsForMode().filter((i) => selectedSet.has(i));
-  // 月次データ・注文リスト共通で使う、選択範囲に含まれる月のキー一覧と注文明細
-  const months = items.flatMap(monthsForItem);
-  const periodOrders = months.flatMap((ym) => ORDER_LIST[ym] || []);
+  const items = getDisplayItems();
+  const periodOrders = items.flatMap((item) => ordersInRange(item.start, item.end));
 
-  // --- グラフ用データを組み立てる（年別は各年12ヶ月分を0埋めして連結） ---
-  let labels = [], azCount = [], azPrice = [], mcCount = [], mcPrice = [];
-  if (currentMode === "year") {
-    for (const y of items) {
-      const d = buildYearMonthsData(y);
-      labels.push(...d.labels.map((l) => `${y}/${l}`));
-      azCount.push(...d["Amazon"].count);
-      azPrice.push(...d["Amazon"].price);
-      mcCount.push(...d["メルカリShops"].count);
-      mcPrice.push(...d["メルカリShops"].price);
-    }
-  } else if (monthGranularity === "day") {
-    // 「日分け」が選択されている場合、選択中の月を注文日時から日別に分解する
-    // （複数月選択時は日別に分解したものを連結して比較できるようにする）
-    for (const ym of items) {
-      const d = buildDailyDataForMonth(ym);
-      labels.push(...d.labels);
-      azCount.push(...d["Amazon"].count);
-      azPrice.push(...d["Amazon"].price);
-      mcCount.push(...d["メルカリShops"].count);
-      mcPrice.push(...d["メルカリShops"].price);
-    }
-  } else {
-    labels = items.map(formatMonthLabel);
-    for (const ym of items) {
-      const i = DATA.months.indexOf(ym);
-      azCount.push(DATA["Amazon"].count[i]);
-      azPrice.push(DATA["Amazon"].price[i]);
-      mcCount.push(DATA["メルカリShops"].count[i]);
-      mcPrice.push(DATA["メルカリShops"].price[i]);
-    }
+  // --- グラフ用データを組み立てる（選択項目＝年/月/週それぞれを1本のバーにする） ---
+  const labels = items.map((item) => item.label);
+  const azCount = [], azPrice = [], mcCount = [], mcPrice = [];
+  for (const item of items) {
+    const t = siteTotals(ordersInRange(item.start, item.end));
+    azCount.push(t.c1); azPrice.push(t.p1);
+    mcCount.push(t.c2); mcPrice.push(t.p2);
   }
-  const barThickness = currentMode === "year" ? 40 : (currentMode === "month" && monthGranularity === "day" ? 10 : 24);
-  renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThickness);
+  renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, 24);
 
   // --- 月次データ: 選択項目を行ごとに出さず、選択範囲全体の合計を1行で出す ---
   const tbody = document.getElementById("monthSummaryBody");
   const caption = document.getElementById("monthSummaryCaption");
-  caption.textContent = items.length ? items.map(labelForItem).join("、") : "未選択";
+  caption.textContent = items.length ? items.map((i) => i.label).join("、") : "未選択";
   let rows = "";
   if (items.length) {
-    let c1 = 0, p1 = 0, c2 = 0, p2 = 0;
-    for (const item of items) {
-      for (const ym of monthsForItem(item)) {
-        const i = DATA.months.indexOf(ym);
-        if (i < 0) continue;
-        c1 += DATA["Amazon"].count[i]; p1 += DATA["Amazon"].price[i];
-        c2 += DATA["メルカリShops"].count[i]; p2 += DATA["メルカリShops"].price[i];
-      }
-    }
+    const { c1, p1, c2, p2 } = siteTotals(periodOrders);
     const mishire = mishireStatsForOrders(periodOrders);
     rows = `<tr>
       <td>合計</td>
@@ -957,17 +977,11 @@ function renderForSelection() {
   // --- 月次データの詳細（「詳細」ボタンのポップアップ用）: 選択項目ごとに1行作る ---
   let detailRows = "";
   for (const item of items) {
-    let c1 = 0, p1 = 0, c2 = 0, p2 = 0;
-    const itemMonths = monthsForItem(item);
-    for (const ym of itemMonths) {
-      const i = DATA.months.indexOf(ym);
-      if (i < 0) continue;
-      c1 += DATA["Amazon"].count[i]; p1 += DATA["Amazon"].price[i];
-      c2 += DATA["メルカリShops"].count[i]; p2 += DATA["メルカリShops"].price[i];
-    }
-    const mishire = mishireStatsForOrders(itemMonths.flatMap((ym) => ORDER_LIST[ym] || []));
+    const itemOrders = ordersInRange(item.start, item.end);
+    const { c1, p1, c2, p2 } = siteTotals(itemOrders);
+    const mishire = mishireStatsForOrders(itemOrders);
     detailRows += `<tr>
-      <td>${labelForItem(item)}</td>
+      <td>${item.label}</td>
       <td>${mishire.mishireCount.toLocaleString("ja-JP")}件<br><span class="sub-line">${formatYen(mishire.mishireWholesale)}</span></td>
       <td class="site-amazon">${c1}件<br><span class="sub-line">${formatYen(p1)}</span></td>
       <td class="site-mercari">${c2}件<br><span class="sub-line">${formatYen(p2)}</span></td>
@@ -976,52 +990,122 @@ function renderForSelection() {
   }
   monthDetailRowsHTML = detailRows || `<tr><td colspan="5">選択してください</td></tr>`;
 
-  // --- 注文リスト: 選択項目に含まれる全月の注文をまとめて出す ---
-  renderOrderList(months, items.map(labelForItem).join("、") || "選択なし");
+  // --- 注文リスト: 選択範囲に含まれる注文をまとめて出す ---
+  renderOrderList(periodOrders, items.map((i) => i.label).join("、") || "選択なし");
+}
+
+function allWeeksInTree() {
+  return Object.keys(periodTree).sort().flatMap((year) => weeksOfYear(year));
 }
 
 function updateTriggerLabel() {
   const trigger = document.getElementById("periodTrigger");
-  const items = allItemsForMode();
-  const n = selectedSet.size;
+  const items = getDisplayItems();
+  const total = allWeeksInTree().length;
+  const n = selectedWeeks.size;
   if (n === 0) trigger.textContent = "未選択";
-  else if (n === items.length) trigger.textContent = "全期間";
-  else if (n <= 3) trigger.textContent = items.filter((i) => selectedSet.has(i)).map(labelForItem).join("、");
-  else trigger.textContent = `${n}件選択中`;
+  else if (n === total) trigger.textContent = "全期間";
+  else if (items.length <= 3) trigger.textContent = items.map((i) => i.label).join("、");
+  else trigger.textContent = `${items.length}件選択中`;
 }
 
 function updateSelectAllCheckbox() {
-  const all = document.querySelectorAll(".period-checkbox");
-  const allChecked = all.length > 0 && Array.from(all).every((cb) => cb.checked);
-  document.getElementById("selectAllCheckbox").checked = allChecked;
+  const total = allWeeksInTree().length;
+  const cb = document.getElementById("selectAllCheckbox");
+  cb.checked = total > 0 && selectedWeeks.size === total;
+  cb.indeterminate = selectedWeeks.size > 0 && selectedWeeks.size < total;
 }
 
-// モード（月別/年別）に応じて選択肢（チェックボックス）一覧を作り直す。
-// デフォルトは全選択（＝全体の推移）
-function renderPeriodPicker() {
-  const items = allItemsForMode();
-  selectedSet = new Set(items);
+// チェック操作でツリー全体を再描画しても、開いていた年・月の展開状態が
+// 閉じてしまわないように、展開中のキーを別途保持しておく
+let expandedYears = new Set();
+let expandedMonths = new Set();
 
-  const list = document.getElementById("periodItemsList");
-  list.innerHTML = items
-    .map((v) => `
-      <label class="multi-select-item">
-        <input type="checkbox" class="period-checkbox" value="${v}" checked>
-        ${labelForItem(v)}
-      </label>
-    `)
-    .join("");
+// 年→月→週の階層チェックボックスをHTMLとして描く
+function renderPeriodTree() {
+  const root = document.getElementById("periodTreeRoot");
+  let html = "";
+  for (const year of Object.keys(periodTree).sort()) {
+    const yWeeks = weeksOfYear(year);
+    const yState = checkStateOf(yWeeks);
+    const yOpen = expandedYears.has(year);
+    html += `<div class="period-tree-year">
+      <div class="period-tree-row">
+        <span class="period-tree-toggle" data-toggle data-level="year" data-year="${year}">${yOpen ? "▾" : "▸"}</span>
+        <label><input type="checkbox" class="period-year-checkbox" data-year="${year}"
+          ${yState === "checked" ? "checked" : ""} ${yState === "indeterminate" ? "data-indeterminate" : ""}> ${year}年</label>
+      </div>
+      <div class="period-tree-month-list" ${yOpen ? "" : "hidden"}>`;
+    for (const ym of Object.keys(periodTree[year]).sort()) {
+      const mWeeks = weeksOfMonth(year, ym);
+      const mState = checkStateOf(mWeeks);
+      const mOpen = expandedMonths.has(ym);
+      html += `<div class="period-tree-month">
+        <div class="period-tree-row">
+          <span class="period-tree-toggle" data-toggle data-level="month" data-ym="${ym}">${mOpen ? "▾" : "▸"}</span>
+          <label><input type="checkbox" class="period-month-checkbox" data-ym="${ym}" data-year="${year}"
+            ${mState === "checked" ? "checked" : ""} ${mState === "indeterminate" ? "data-indeterminate" : ""}> ${formatMonthLabel(ym)}</label>
+        </div>
+        <div class="period-tree-week-list" ${mOpen ? "" : "hidden"}>`;
+      for (const w of mWeeks) {
+        html += `<div class="period-tree-row">
+          <label><input type="checkbox" class="period-week-checkbox" data-week="${w.key}"
+            ${selectedWeeks.has(w.key) ? "checked" : ""}> ${w.label}</label>
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+    html += `</div></div>`;
+  }
+  root.innerHTML = html;
+  root.querySelectorAll("[data-indeterminate]").forEach((cb) => { cb.indeterminate = true; });
+}
 
-  list.querySelectorAll(".period-checkbox").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      if (cb.checked) selectedSet.add(cb.value);
-      else selectedSet.delete(cb.value);
-      updateSelectAllCheckbox();
-      updateTriggerLabel();
-      renderForSelection();
-    });
+function setWeeksChecked(weeks, checked) {
+  for (const w of weeks) {
+    if (checked) selectedWeeks.add(w.key);
+    else selectedWeeks.delete(w.key);
+  }
+}
+
+// 年→月→週の階層ツリーの初期化・配線（展開/折りたたみ、チェックの連動）
+function wirePeriodTree() {
+  const root = document.getElementById("periodTreeRoot");
+  root.addEventListener("click", (e) => {
+    const toggle = e.target.closest("[data-toggle]");
+    if (!toggle) return;
+    const container = toggle.closest(".period-tree-row").nextElementSibling;
+    container.hidden = !container.hidden;
+    toggle.textContent = container.hidden ? "▸" : "▾";
+    const set = toggle.dataset.level === "year" ? expandedYears : expandedMonths;
+    const key = toggle.dataset.level === "year" ? toggle.dataset.year : toggle.dataset.ym;
+    if (container.hidden) set.delete(key);
+    else set.add(key);
   });
+  root.addEventListener("change", (e) => {
+    const t = e.target;
+    if (t.classList.contains("period-year-checkbox")) {
+      setWeeksChecked(weeksOfYear(t.dataset.year), t.checked);
+    } else if (t.classList.contains("period-month-checkbox")) {
+      setWeeksChecked(weeksOfMonth(t.dataset.year, t.dataset.ym), t.checked);
+    } else if (t.classList.contains("period-week-checkbox")) {
+      if (t.checked) selectedWeeks.add(t.dataset.week);
+      else selectedWeeks.delete(t.dataset.week);
+    } else {
+      return;
+    }
+    renderPeriodTree();
+    updateSelectAllCheckbox();
+    updateTriggerLabel();
+    renderForSelection();
+  });
+}
 
+// データが読み込まれた直後に、年→月→週のツリーを作り、デフォルトで全選択する
+function initPeriodTree() {
+  buildPeriodTree();
+  selectedWeeks = new Set(allWeeksInTree().map((w) => w.key));
+  renderPeriodTree();
   updateSelectAllCheckbox();
   updateTriggerLabel();
   renderForSelection();
@@ -1076,12 +1160,8 @@ function wireStatusSelects() {
 
 function wireSelectAllCheckbox() {
   document.getElementById("selectAllCheckbox").addEventListener("change", (e) => {
-    const checked = e.target.checked;
-    document.querySelectorAll(".period-checkbox").forEach((cb) => {
-      cb.checked = checked;
-      if (checked) selectedSet.add(cb.value);
-      else selectedSet.delete(cb.value);
-    });
+    setWeeksChecked(allWeeksInTree(), e.target.checked);
+    renderPeriodTree();
     updateTriggerLabel();
     renderForSelection();
   });
@@ -1097,34 +1177,6 @@ function wirePeriodDropdown() {
     if (!document.getElementById("periodPicker").contains(e.target)) {
       panel.hidden = true;
     }
-  });
-}
-
-function wireModeToggle() {
-  const group = document.getElementById("modeToggle");
-  const granularityToggle = document.getElementById("granularityToggle");
-  group.querySelectorAll("button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      group.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentMode = btn.dataset.mode;
-      // 日分け/月分けの切り替えは月別モードのときだけ意味があるので表示を切り替える
-      granularityToggle.hidden = currentMode !== "month";
-      renderPeriodPicker();
-    });
-  });
-  granularityToggle.hidden = currentMode !== "month";
-}
-
-function wireGranularityToggle() {
-  const group = document.getElementById("granularityToggle");
-  group.querySelectorAll("button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      group.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      monthGranularity = btn.dataset.granularity;
-      renderForSelection();
-    });
   });
 }
 
@@ -1295,19 +1347,14 @@ async function showDashboard() {
     // （新規注文の有無に関わらず、チェックに行くたびに記録されている値）
     await renderLastChecked();
 
-    renderPeriodPicker();
+    initPeriodTree();
 
-    // 初期表示は「今月のみを日分けで表示」にする
-    monthGranularity = "day";
-    document.querySelectorAll("#granularityToggle button").forEach((b) => {
-      b.classList.toggle("active", b.dataset.granularity === "day");
-    });
+    // 初期表示は「今月のみ」にする
     const currentMonth = getCurrentMonthKeyJST();
     if (DATA.months.includes(currentMonth)) {
-      selectedSet = new Set([currentMonth]);
-      document.querySelectorAll(".period-checkbox").forEach((cb) => {
-        cb.checked = cb.value === currentMonth;
-      });
+      const year = currentMonth.split("-")[0];
+      selectedWeeks = new Set(weeksOfMonth(year, currentMonth).map((w) => w.key));
+      renderPeriodTree();
       updateSelectAllCheckbox();
       updateTriggerLabel();
       renderForSelection();
@@ -1345,8 +1392,7 @@ function wireLogoutButton() {
 }
 
 // イベント配線は1回だけ行う（ログイン状態・データの有無に関係ない部分）
-wireModeToggle();
-wireGranularityToggle();
+wirePeriodTree();
 wireSelectAllCheckbox();
 wireStatusSelects();
 wireTruncateClicks();

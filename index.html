@@ -174,6 +174,15 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   cursor: pointer;
 }
 .detail-button:hover { background: color-mix(in srgb, var(--accent-ink) 10%, transparent); }
+.extra-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  font-size: 0.85rem;
+  color: var(--sub);
+  margin-bottom: 14px;
+}
+.extra-stats strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 #orderListMoreButton { display: block; margin: 14px auto 0; }
 #monthSelect {
   font-family: inherit;
@@ -420,6 +429,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       <button type="button" class="detail-button" id="monthDetailButton">詳細</button>
     </div>
     <p class="caption" id="monthSummaryCaption"></p>
+    <div class="extra-stats" id="monthExtraStats"></div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -868,6 +878,9 @@ let monthDetailRowsHTML = "";
 // グラフ・月次データ・注文リストをまとめて再描画する
 function renderForSelection() {
   const items = allItemsForMode().filter((i) => selectedSet.has(i));
+  // 月次データ・注文リスト共通で使う、選択範囲に含まれる月のキー一覧と注文明細
+  const months = items.flatMap(monthsForItem);
+  const periodOrders = months.flatMap((ym) => ORDER_LIST[ym] || []);
 
   // --- グラフ用データを組み立てる（年別は各年12ヶ月分を0埋めして連結） ---
   let labels = [], azCount = [], azPrice = [], mcCount = [], mcPrice = [];
@@ -929,6 +942,19 @@ function renderForSelection() {
   }
   tbody.innerHTML = rows || `<tr><td colspan="5">選択してください</td></tr>`;
 
+  // --- 月次データの追加項目: 販売価格合計・未仕入（状況が未着手）の件数と卸値合計 ---
+  const totalPrice = periodOrders.reduce(
+    (sum, o) => (o["注文状況"] === "取消済み" ? sum : sum + (o["販売価格"] || 0)), 0
+  );
+  const mishireOrders = periodOrders.filter((o) => (o["注文状況"] || "未着手") === "未着手");
+  const mishireCount = mishireOrders.length;
+  const mishireWholesale = mishireOrders.reduce((sum, o) => sum + (o["卸値"] || 0), 0);
+  document.getElementById("monthExtraStats").innerHTML = `
+    <span>販売価格の合計値: <strong>${formatYen(totalPrice)}</strong></span>
+    <span>未仕入の合計値: <strong>${mishireCount.toLocaleString("ja-JP")}件</strong></span>
+    <span>未仕入の卸値の合計値: <strong>${formatYen(mishireWholesale)}</strong></span>
+  `;
+
   // --- 月次データの詳細（「詳細」ボタンのポップアップ用）: 選択項目ごとに1行作る ---
   let detailRows = "";
   for (const item of items) {
@@ -950,7 +976,6 @@ function renderForSelection() {
   monthDetailRowsHTML = detailRows || `<tr><td colspan="5">選択してください</td></tr>`;
 
   // --- 注文リスト: 選択項目に含まれる全月の注文をまとめて出す ---
-  const months = items.flatMap(monthsForItem);
   renderOrderList(months, items.map(labelForItem).join("、") || "選択なし");
 }
 

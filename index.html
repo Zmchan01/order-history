@@ -821,21 +821,23 @@ function renderForSelection() {
   const barThickness = currentMode === "year" ? 40 : (currentMode === "month" && monthGranularity === "day" ? 10 : 24);
   renderChartCore(labels, azCount, azPrice, mcCount, mcPrice, barThickness);
 
-  // --- 月次データ: 選択項目ごとに1行ずつ出す ---
+  // --- 月次データ: 選択項目を行ごとに出さず、選択範囲全体の合計を1行で出す ---
   const tbody = document.getElementById("monthSummaryBody");
   const caption = document.getElementById("monthSummaryCaption");
   caption.textContent = items.length ? items.map(labelForItem).join("、") : "未選択";
   let rows = "";
-  for (const item of items) {
+  if (items.length) {
     let c1 = 0, p1 = 0, c2 = 0, p2 = 0;
-    for (const ym of monthsForItem(item)) {
-      const i = DATA.months.indexOf(ym);
-      if (i < 0) continue;
-      c1 += DATA["Amazon"].count[i]; p1 += DATA["Amazon"].price[i];
-      c2 += DATA["メルカリShops"].count[i]; p2 += DATA["メルカリShops"].price[i];
+    for (const item of items) {
+      for (const ym of monthsForItem(item)) {
+        const i = DATA.months.indexOf(ym);
+        if (i < 0) continue;
+        c1 += DATA["Amazon"].count[i]; p1 += DATA["Amazon"].price[i];
+        c2 += DATA["メルカリShops"].count[i]; p2 += DATA["メルカリShops"].price[i];
+      }
     }
-    rows += `<tr>
-      <td>${labelForItem(item)}</td>
+    rows = `<tr>
+      <td>合計</td>
       <td class="site-amazon">${c1}</td>
       <td>${formatYen(p1)}</td>
       <td class="site-mercari">${c2}</td>

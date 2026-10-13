@@ -174,6 +174,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   cursor: pointer;
 }
 .detail-button:hover { background: color-mix(in srgb, var(--accent-ink) 10%, transparent); }
+#orderListMoreButton { display: block; margin: 14px auto 0; }
 #monthSelect {
   font-family: inherit;
   font-size: 0.85rem;
@@ -452,6 +453,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         <tbody id="orderListBody"></tbody>
       </table>
     </div>
+    <button type="button" class="detail-button" id="orderListMoreButton" hidden>さらに表示</button>
   </section>
 
   <section class="panel">
@@ -598,6 +600,11 @@ function wireTruncateClicks() {
     }
   });
 
+  document.getElementById("orderListMoreButton").addEventListener("click", () => {
+    orderListVisibleCount += ORDER_LIST_PAGE_SIZE;
+    renderOrderListBody();
+  });
+
   document.getElementById("monthDetailButton").addEventListener("click", () => {
     document.getElementById("monthDetailBody").innerHTML = monthDetailRowsHTML;
     document.getElementById("monthDetailModal").hidden = false;
@@ -640,14 +647,28 @@ function sortOrderRows(list) {
   });
 }
 
+// 注文リストは10件ずつ表示し、「さらに表示」ボタンで追加分を出す
+const ORDER_LIST_PAGE_SIZE = 10;
+let currentOrderList = [];
+let currentOrderLabel = "";
+let orderListVisibleCount = ORDER_LIST_PAGE_SIZE;
+
 function renderOrderList(months, label) {
+  currentOrderList = sortOrderRows(months.flatMap((ym) => ORDER_LIST[ym] || []));
+  currentOrderLabel = label;
+  orderListVisibleCount = ORDER_LIST_PAGE_SIZE;
+  renderOrderListBody();
+}
+
+function renderOrderListBody() {
   const tbody = document.getElementById("orderListBody");
   const caption = document.getElementById("orderListCaption");
-  const list = sortOrderRows(months.flatMap((ym) => ORDER_LIST[ym] || []));
-  caption.textContent = `${label} の注文: ${list.length}件`;
+  const list = currentOrderList;
+  caption.textContent = `${currentOrderLabel} の注文: ${list.length}件`;
 
+  const visible = list.slice(0, orderListVisibleCount);
   let rows = "";
-  for (const o of list) {
+  for (const o of visible) {
     const status = o["注文状況"] || "未着手";
     const needsNothing = status === "出荷済み" || status === "取消済み";
     const options = STATUS_OPTIONS
@@ -662,6 +683,15 @@ function renderOrderList(months, label) {
     </tr>`;
   }
   tbody.innerHTML = rows || `<tr><td colspan="5">この期間の注文はありません</td></tr>`;
+
+  const moreButton = document.getElementById("orderListMoreButton");
+  const remaining = list.length - orderListVisibleCount;
+  if (remaining > 0) {
+    moreButton.hidden = false;
+    moreButton.textContent = `さらに表示（残り${remaining}件）`;
+  } else {
+    moreButton.hidden = true;
+  }
 }
 
 function readCssVar(name) {

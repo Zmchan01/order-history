@@ -281,21 +281,15 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 .row-purchased td:not(.cell-flag) { color: var(--sub); }
 
 /* 表示する範囲: プリセットのタブ風ボタン */
-.range-button-group { display: flex; flex-wrap: wrap; gap: 6px; }
-.range-button-group button {
+#rangeSelect {
   font-family: inherit;
-  font-size: 0.8rem;
-  padding: 6px 12px;
+  font-size: 0.85rem;
+  padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
-  color: var(--sub);
+  color: var(--ink);
   cursor: pointer;
-}
-.range-button-group button.active {
-  background: var(--accent-ink);
-  color: var(--bg);
-  border-color: var(--accent-ink);
 }
 .panel .caption { font-size: 0.82rem; color: var(--sub); margin: 0 0 14px; }
 
@@ -360,15 +354,15 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
     </div>
     <div class="period-control">
       <span class="period-control-label">表示する範囲</span>
-      <div class="range-button-group" id="rangeButtonGroup">
-        <button type="button" data-range="all">全選択</button>
-        <button type="button" data-range="year">一年</button>
-        <button type="button" data-range="h1">上半期</button>
-        <button type="button" data-range="h2">下半期</button>
-        <button type="button" data-range="3m">三か月</button>
-        <button type="button" data-range="month" class="active">今月</button>
-        <button type="button" data-range="week">今週</button>
-      </div>
+      <select id="rangeSelect">
+        <option value="all">全選択</option>
+        <option value="year">一年</option>
+        <option value="h1">上半期</option>
+        <option value="h2">下半期</option>
+        <option value="3m">三か月</option>
+        <option value="month" selected>今月</option>
+        <option value="week">今週</option>
+      </select>
     </div>
     <p class="caption" id="lastUpdated"></p>
   </header>
@@ -955,16 +949,11 @@ function renderForSelection() {
   renderOrderList(periodOrders, range ? `${range.start} 〜 ${range.end}` : "選択なし");
 }
 
-// 表示する範囲のプリセットボタンを配線する
-function wireRangeButtons() {
-  const group = document.getElementById("rangeButtonGroup");
-  group.querySelectorAll("button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      group.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      activePresetKey = btn.dataset.range;
-      renderForSelection();
-    });
+// 表示する範囲のプルダウンを配線する
+function wireRangeSelect() {
+  document.getElementById("rangeSelect").addEventListener("change", (e) => {
+    activePresetKey = e.target.value;
+    renderForSelection();
   });
 }
 
@@ -1208,7 +1197,7 @@ function wireLogoutButton() {
 }
 
 // イベント配線は1回だけ行う（ログイン状態・データの有無に関係ない部分）
-wireRangeButtons();
+wireRangeSelect();
 wireStatusSelects();
 wireTruncateClicks();
 wireLoginForm();

@@ -241,7 +241,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   overflow: hidden;
   box-shadow: 0 16px 40px color-mix(in srgb, var(--ink) 25%, transparent);
 }
-.modal-box-wide { max-width: 920px; }
+.modal-box-wide { max-width: 760px; }
 .modal-scroll {
   padding: 24px 24px 20px;
   overflow-y: auto;
@@ -425,13 +425,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         <thead>
           <tr>
             <th>月</th>
-            <th>Site_A 件数</th>
-            <th>Site_A 金額</th>
-            <th>Site_M 件数</th>
-            <th>Site_M 金額</th>
-            <th>販売価格合計</th>
-            <th>未仕入件数</th>
-            <th>未仕入卸値合計</th>
+            <th>未仕入件数/卸値合計</th>
+            <th>Site_A 件数/販売価格合計</th>
+            <th>Site_M 件数/販売価格合計</th>
+            <th>注文件数/販売価格合計</th>
           </tr>
         </thead>
         <tbody id="monthSummaryBody"></tbody>
@@ -505,13 +502,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           <thead>
             <tr>
               <th>月</th>
-              <th>Site_A 件数</th>
-              <th>Site_A 金額</th>
-              <th>Site_M 件数</th>
-              <th>Site_M 金額</th>
-              <th>販売価格合計</th>
-              <th>未仕入件数</th>
-              <th>未仕入卸値合計</th>
+              <th>未仕入件数/卸値合計</th>
+              <th>Site_A 件数/販売価格合計</th>
+              <th>Site_M 件数/販売価格合計</th>
+              <th>注文件数/販売価格合計</th>
             </tr>
           </thead>
           <tbody id="monthDetailBody"></tbody>
@@ -866,14 +860,10 @@ function labelForItem(item) {
   return currentMode === "year" ? `${item}年` : formatMonthLabel(item);
 }
 
-// 注文明細の配列から、販売価格合計・未仕入（状況が未着手）の件数と卸値合計を算出する
-function extraStatsForOrders(orders) {
-  const totalPrice = orders.reduce(
-    (sum, o) => (o["注文状況"] === "取消済み" ? sum : sum + (o["販売価格"] || 0)), 0
-  );
+// 注文明細の配列から、未仕入（状況が未着手）の件数と卸値合計を算出する
+function mishireStatsForOrders(orders) {
   const mishireOrders = orders.filter((o) => (o["注文状況"] || "未着手") === "未着手");
   return {
-    totalPrice,
     mishireCount: mishireOrders.length,
     mishireWholesale: mishireOrders.reduce((sum, o) => sum + (o["卸値"] || 0), 0),
   };
@@ -941,19 +931,16 @@ function renderForSelection() {
         c2 += DATA["メルカリShops"].count[i]; p2 += DATA["メルカリShops"].price[i];
       }
     }
-    const extra = extraStatsForOrders(periodOrders);
+    const mishire = mishireStatsForOrders(periodOrders);
     rows = `<tr>
       <td>合計</td>
-      <td class="site-amazon">${c1}</td>
-      <td>${formatYen(p1)}</td>
-      <td class="site-mercari">${c2}</td>
-      <td>${formatYen(p2)}</td>
-      <td>${formatYen(extra.totalPrice)}</td>
-      <td>${extra.mishireCount.toLocaleString("ja-JP")}件</td>
-      <td>${formatYen(extra.mishireWholesale)}</td>
+      <td>${mishire.mishireCount.toLocaleString("ja-JP")}件<br><span class="sub-line">${formatYen(mishire.mishireWholesale)}</span></td>
+      <td class="site-amazon">${c1}件<br><span class="sub-line">${formatYen(p1)}</span></td>
+      <td class="site-mercari">${c2}件<br><span class="sub-line">${formatYen(p2)}</span></td>
+      <td>${c1 + c2}件<br><span class="sub-line">${formatYen(p1 + p2)}</span></td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="8">選択してください</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="5">選択してください</td></tr>`;
 
   // --- 月次データの詳細（「詳細」ボタンのポップアップ用）: 選択項目ごとに1行作る ---
   let detailRows = "";
@@ -966,19 +953,16 @@ function renderForSelection() {
       c1 += DATA["Amazon"].count[i]; p1 += DATA["Amazon"].price[i];
       c2 += DATA["メルカリShops"].count[i]; p2 += DATA["メルカリShops"].price[i];
     }
-    const extra = extraStatsForOrders(itemMonths.flatMap((ym) => ORDER_LIST[ym] || []));
+    const mishire = mishireStatsForOrders(itemMonths.flatMap((ym) => ORDER_LIST[ym] || []));
     detailRows += `<tr>
       <td>${labelForItem(item)}</td>
-      <td class="site-amazon">${c1}</td>
-      <td>${formatYen(p1)}</td>
-      <td class="site-mercari">${c2}</td>
-      <td>${formatYen(p2)}</td>
-      <td>${formatYen(extra.totalPrice)}</td>
-      <td>${extra.mishireCount.toLocaleString("ja-JP")}件</td>
-      <td>${formatYen(extra.mishireWholesale)}</td>
+      <td>${mishire.mishireCount.toLocaleString("ja-JP")}件<br><span class="sub-line">${formatYen(mishire.mishireWholesale)}</span></td>
+      <td class="site-amazon">${c1}件<br><span class="sub-line">${formatYen(p1)}</span></td>
+      <td class="site-mercari">${c2}件<br><span class="sub-line">${formatYen(p2)}</span></td>
+      <td>${c1 + c2}件<br><span class="sub-line">${formatYen(p1 + p2)}</span></td>
     </tr>`;
   }
-  monthDetailRowsHTML = detailRows || `<tr><td colspan="8">選択してください</td></tr>`;
+  monthDetailRowsHTML = detailRows || `<tr><td colspan="5">選択してください</td></tr>`;
 
   // --- 注文リスト: 選択項目に含まれる全月の注文をまとめて出す ---
   renderOrderList(months, items.map(labelForItem).join("、") || "選択なし");

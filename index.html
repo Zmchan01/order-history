@@ -221,6 +221,13 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 .row-clickable:hover { background: color-mix(in srgb, var(--accent-ink) 7%, transparent); }
 .row-clickable .status-select { cursor: auto; }
 
+.modal-product-title {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+
 .modal-product-image {
   display: block;
   max-width: 100%;
@@ -496,6 +503,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   <div class="modal-box">
     <button type="button" class="modal-close" id="modalClose" aria-label="閉じる">×</button>
     <div class="modal-scroll">
+      <h3 id="modalTitle" class="modal-product-title"></h3>
       <img id="modalImage" class="modal-product-image" alt="商品画像" hidden>
       <dl id="modalContent"></dl>
     </div>
@@ -550,6 +558,8 @@ function renderSummary() {
 }
 
 function showDetailModal(o) {
+  document.getElementById("modalTitle").textContent = o["商品名"] ?? "";
+
   const img = document.getElementById("modalImage");
   if (o["画像"]) {
     // 画像ファイルが実際には無い場合（JANはあるが画像未登録等）に備えて
@@ -573,7 +583,6 @@ function showDetailModal(o) {
     <dt>注文番号</dt><dd>${o["注文番号"]}</dd>
     <dt>SKU</dt><dd>${o["SKU"] ?? ""}</dd>
     <dt>数量</dt><dd>${o["数量"] ?? ""}</dd>
-    <dt>商品名</dt><dd>${o["商品名"]}</dd>
     <dt>販売価格</dt><dd>${formatYen(o["販売価格"])}</dd>
     <dt>卸値</dt><dd>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
     <dt>配送サイズ</dt><dd>${o["配送サイズ"] ?? "-"}</dd>

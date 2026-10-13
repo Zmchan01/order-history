@@ -111,6 +111,12 @@ body {
 }
 .login-error { color: var(--mercari); font-size: 0.82rem; margin: 0; }
 
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
 .logout-button {
   font-family: inherit;
   font-size: 0.8rem;
@@ -120,8 +126,7 @@ body {
   background: var(--surface);
   color: var(--sub);
   cursor: pointer;
-  align-self: flex-start;
-  margin-top: 8px;
+  flex-shrink: 0;
 }
 
 .period-control {
@@ -395,9 +400,13 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 
 <div class="wrap" id="dashboardScreen" hidden>
   <header>
-    <h1>注文件数・金額ダッシュボード</h1>
-    <p>Site_A・Site_Mの月次注文件数と金額（注文日時基準・JST）</p>
-    <button type="button" class="logout-button" id="logoutButton">ログアウト</button>
+    <div class="header-top">
+      <div>
+        <h1>注文件数・金額ダッシュボード</h1>
+        <p>Site_A・Site_Mの月次注文件数と金額（注文日時基準・JST）</p>
+      </div>
+      <button type="button" class="logout-button" id="logoutButton">ログアウト</button>
+    </div>
     <div class="period-control">
       <span class="period-control-label">表示する範囲</span>
       <div class="multi-select" id="periodPicker">

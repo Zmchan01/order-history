@@ -120,7 +120,7 @@ body {
 .header-title-group {
   display: flex;
   align-items: baseline;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 .logout-button {
@@ -138,7 +138,7 @@ body {
 .filter-row {
   display: flex;
   align-items: flex-end;
-  gap: 18px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 .filter-field {
@@ -221,6 +221,14 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   font-size: 1rem;
   margin: 0 0 4px;
 }
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.panel-header h2 { margin: 0; }
+.panel-header .caption { margin: 0; }
 .detail-button {
   font-family: inherit;
   font-size: 0.8rem;
@@ -323,7 +331,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 #modalContent dt {
   font-size: 0.78rem;
   color: var(--sub);
-  margin-top: 14px;
+  margin-top: 8px;
 }
 #modalContent dt:first-child { margin-top: 0; }
 #modalContent dd {
@@ -337,7 +345,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 
 .legend {
   display: flex;
-  gap: 18px;
+  gap: 12px;
   flex-wrap: wrap;
   font-size: 0.82rem;
   color: var(--sub);
@@ -453,8 +461,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   </section>
 
   <section class="panel">
-    <h2>月次データ</h2>
-    <p class="caption" id="monthSummaryCaption"></p>
+    <div class="panel-header">
+      <h2>月次データ</h2>
+      <p class="caption" id="monthSummaryCaption"></p>
+    </div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -473,8 +483,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   </section>
 
   <section class="panel" id="orderListPanel">
-    <h2>注文リスト</h2>
-    <p class="caption" id="orderListCaption"></p>
+    <div class="panel-header">
+      <h2>注文リスト</h2>
+      <p class="caption" id="orderListCaption"></p>
+    </div>
     <div class="table-wrap">
       <table class="order-table">
         <thead>
@@ -493,8 +505,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   </section>
 
   <section class="panel" id="orderGraphPanel" hidden>
-    <h2>注文グラフ</h2>
-    <p class="caption">棒グラフ(積み上げ)=金額（左軸）、折れ線=件数（右軸）</p>
+    <div class="panel-header">
+      <h2>注文グラフ</h2>
+      <p class="caption">棒グラフ(積み上げ)=金額（左軸）、折れ線=件数（右軸）</p>
+    </div>
     <div class="chart-shell">
       <canvas id="chart"></canvas>
     </div>
@@ -1234,8 +1248,8 @@ function buildMonthlyData(rows) {
 
 // サイト名の表示用ラベル（内部データのキー自体は"Amazon"/"メルカリShops"のまま変更しない）
 function siteLabel(name) {
-  if (name === "Amazon") return "Site_A";
-  if (name === "メルカリShops") return "Site_M";
+  if (name === "Amazon") return "A";
+  if (name === "メルカリShops") return "M";
   return name;
 }
 

@@ -345,8 +345,8 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .swatch { width: 14px; height: 14px; border-radius: 3px; }
-.swatch.bar-amazon { background: var(--amazon); }
-.swatch.bar-mercari { background: var(--mercari); }
+.swatch.bar-amazon { background: var(--amazon-soft); }
+.swatch.bar-mercari { background: var(--mercari-soft); }
 .swatch.line-amazon { background: none; border-top: 3px solid var(--amazon); height: 0; width: 16px; }
 .swatch.line-mercari { background: none; border-top: 3px solid var(--mercari); height: 0; width: 16px; }
 
@@ -707,6 +707,9 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice) {
   const ctx = document.getElementById("chart");
   const amazonColor = readCssVar("--amazon");
   const mercariColor = readCssVar("--mercari");
+  // 棒グラフ(金額)は薄い色、折れ線(件数)は濃い色にして、重なっても見分けやすくする
+  const amazonSoft = readCssVar("--amazon-soft");
+  const mercariSoft = readCssVar("--mercari-soft");
   const inkColor = readCssVar("--sub");
   const gridColor = readCssVar("--line");
 
@@ -722,7 +725,7 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice) {
           type: "bar",
           label: "Site_A 金額",
           data: azPrice,
-          backgroundColor: amazonColor,
+          backgroundColor: amazonSoft,
           yAxisID: "yPrice",
           stack: "amount",
           order: 2,
@@ -733,7 +736,7 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice) {
           type: "bar",
           label: "Site_M 金額",
           data: mcPrice,
-          backgroundColor: mercariColor,
+          backgroundColor: mercariSoft,
           yAxisID: "yPrice",
           stack: "amount",
           order: 2,

@@ -561,17 +561,20 @@ function showDetailModal(o) {
 
   // 状況は表示のみ（このポップアップ上からは変更できない。変更は一覧のプルダウンから行う）
   document.getElementById("modalContent").innerHTML = `
-    <dt>状況</dt><dd>${o["注文状況"] || "受注のみ"}</dd>
-    <dt>サイト名</dt><dd>${siteLabel(o["サイト名"])}</dd>
-    <dt>注文番号</dt><dd>${o["注文番号"]}</dd>
-    <dt>SKU</dt><dd>${o["SKU"] ?? ""}</dd>
-    <dt>数量</dt><dd>${o["数量"] ?? ""}</dd>
+    <dt>JANコード</dt><dd>${o["JAN"] ?? ""}</dd>
     <dt>販売価格</dt><dd>${formatYen(o["販売価格"])}</dd>
     <dt>卸値</dt><dd>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
     <dt>配送サイズ</dt><dd>${o["配送サイズ"] ?? "-"}</dd>
     <dt>送料</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"}</dd>
     <dt>手数料</dt><dd>${formatYen((o["販売価格"] || 0) * 0.15)}</dd>
     <dt>利益</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</dd>
+    <dt>数量</dt><dd>${o["数量"] ?? ""}</dd>
+    <dt>仕入先</dt><dd>${supplierLabel(o["SKU"])}</dd>
+    <dt>サイト名</dt><dd>${siteLabel(o["サイト名"])}</dd>
+    <dt>状況</dt><dd>${o["注文状況"] || "受注のみ"}</dd>
+    <dt>SKU</dt><dd>${o["SKU"] ?? ""}</dd>
+    <dt>ランキング</dt><dd>${o["ランキング"] ?? "-"}</dd>
+    <dt>注文番号</dt><dd>${o["注文番号"]}</dd>
     <dt>注文日時</dt><dd>${formatDateTime(o["注文日時"])}</dd>
     <dt>発送日時</dt><dd>${formatDateTime(o["出荷日時"])}</dd>
   `;
@@ -1282,6 +1285,7 @@ function buildOrderListByMonth(rows) {
       "注文日時": r["注文日時"],
       "出荷日時": r["出荷日時"],
       "注文状況": r["注文状況"],
+      "ランキング": r["ランキング"] != null ? Number(r["ランキング"]) : null,
     });
   }
   return byMonth;

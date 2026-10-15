@@ -406,9 +406,9 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           <option value="month" selected>月</option>
           <option value="half_year">半年</option>
           <option value="year">1年</option>
-          <option value="all">全て</option>
           <option value="h1">上半期</option>
           <option value="h2">下半期</option>
+          <option value="all">全て</option>
           <option value="custom">範囲指定</option>
         </select>
       </label>
@@ -678,7 +678,7 @@ function renderOrderListBody() {
     rows += `<tr class="row-clickable ${needsNothing ? "row-cancelled" : ""}" data-id="${o["一意キー"]}">
       <td class="cell-flag"><select class="status-select" data-id="${o["一意キー"]}" data-prev="${status}">${options}</select></td>
       <td>${formatDateTime(o["注文日時"])}<br><span class="sub-line">${formatDateTime(o["出荷日時"])}</span></td>
-      <td class="cell-wrap">${truncate(o["商品名"], 25)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
+      <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
       <td>${supplierLabel(o["SKU"])}<br><span class="sub-line">${o["数量"] ?? ""}</span></td>
       <td>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"}<br><span class="sub-line">${formatYen(fee)}</span></td>
     </tr>`;

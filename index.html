@@ -494,7 +494,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 
   <section class="panel" id="orderGraphPanel" hidden>
     <h2>注文グラフ</h2>
-    <p class="caption">棒グラフ(積み上げ)=金額（左軸）、折れ線(スムージング)=件数（右軸）</p>
+    <p class="caption">棒グラフ(積み上げ)=金額（左軸）、折れ線=件数（右軸）</p>
     <div class="chart-shell">
       <canvas id="chart"></canvas>
     </div>
@@ -702,7 +702,7 @@ function readCssVar(name) {
 let chartInstance = null;
 
 // Chart.js本体の描画処理。
-// 金額は積み上げ棒グラフ（左軸、隙間なし）、件数はスムージングした折れ線（右軸）
+// 金額は積み上げ棒グラフ（左軸、隙間なし）、件数は折れ線（右軸）
 function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice) {
   const ctx = document.getElementById("chart");
   const amazonColor = readCssVar("--amazon");
@@ -751,7 +751,7 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice) {
           backgroundColor: amazonColor,
           yAxisID: "yCount",
           order: 1,
-          tension: 0.4,
+          tension: 0,
           pointRadius: 3,
           borderWidth: 2.5,
         },
@@ -763,7 +763,7 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice) {
           backgroundColor: mercariColor,
           yAxisID: "yCount",
           order: 1,
-          tension: 0.4,
+          tension: 0,
           pointRadius: 3,
           borderWidth: 2.5,
         },

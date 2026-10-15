@@ -162,13 +162,46 @@ body {
 }
 .custom-range { flex-direction: row; align-items: center; gap: 6px; }
 .custom-range span { color: var(--sub); }
-.checkbox-group {
-  display: flex;
-  gap: 10px;
-  font-size: 0.85rem;
-  color: var(--ink);
+.multi-select {
+  position: relative;
+  display: inline-block;
 }
-.checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+.multi-select-trigger {
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  min-width: 140px;
+  text-align: left;
+}
+.multi-select-trigger::after { content: " ▾"; color: var(--sub); }
+.multi-select-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 18%, transparent);
+  padding: 8px;
+  min-width: 160px;
+  white-space: nowrap;
+}
+.multi-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.multi-select-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
 header h1 {
   font-size: 1.5rem;
@@ -391,22 +424,29 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           <option value="before_purchase">仕入前</option>
           <option value="before_shipping" selected>発送前</option>
           <option value="shipped">発送済み</option>
+          <option value="cancelled">キャンセル済み</option>
         </select>
       </label>
       <div class="filter-field">
         <span class="filter-label">仕入先</span>
-        <span class="checkbox-group" id="supplierCheckboxes">
-          <label><input type="checkbox" value="自社" checked> 自社</label>
-          <label><input type="checkbox" value="取引先" checked> 取引先</label>
-          <label><input type="checkbox" value="その他" checked> その他</label>
-        </span>
+        <div class="multi-select" id="supplierDropdown">
+          <button type="button" class="multi-select-trigger" id="supplierTrigger">自社、取引先、その他</button>
+          <div class="multi-select-panel" id="supplierPanel" hidden>
+            <label class="multi-select-item"><input type="checkbox" value="自社" checked> 自社</label>
+            <label class="multi-select-item"><input type="checkbox" value="取引先" checked> 取引先</label>
+            <label class="multi-select-item"><input type="checkbox" value="その他" checked> その他</label>
+          </div>
+        </div>
       </div>
       <div class="filter-field">
         <span class="filter-label">表示タイプ</span>
-        <span class="checkbox-group" id="displayTypeCheckboxes">
-          <label><input type="checkbox" value="list" checked> 注文リスト</label>
-          <label><input type="checkbox" value="graph"> 注文グラフ</label>
-        </span>
+        <div class="multi-select" id="displayTypeDropdown">
+          <button type="button" class="multi-select-trigger" id="displayTypeTrigger">注文リスト</button>
+          <div class="multi-select-panel" id="displayTypePanel" hidden>
+            <label class="multi-select-item"><input type="checkbox" value="list" checked> 注文リスト</label>
+            <label class="multi-select-item"><input type="checkbox" value="graph"> 注文グラフ</label>
+          </div>
+        </div>
       </div>
       <button type="button" class="detail-button" id="resetFilterButton">リセット</button>
     </div>
@@ -586,17 +626,17 @@ function formatDateTime(isoStr) {
 }
 
 
-// 状況は5段階（1/5〜5/5）。数字が大きいほど完了に近い
-const STATUS_OPTIONS = ["受注のみ", "取り置き依頼済み", "仕入済み", "受渡し前", "受渡し済み"];
+// 状況は5段階（1/5〜5/5）＋キャンセル済み。数字が大きいほど完了に近い
+const STATUS_OPTIONS = ["受注のみ", "取り置き依頼済み", "仕入済み", "受渡し前", "受渡し済み", "キャンセル済み"];
 const STATUS_STAGE = { "受注のみ": 1, "取り置き依頼済み": 2, "仕入済み": 3, "受渡し前": 4, "受渡し済み": 5 };
 function statusStage(status) {
   return STATUS_STAGE[status] || 1;
 }
 
-// 「受渡し済み」(5/5、対応完了)以外を優先して上に、
+// 「受渡し済み」(5/5、対応完了)・「キャンセル済み」以外を優先して上に、
 // その中では注文日時が新しい順になるよう並べる
 function orderListSortKey(status) {
-  return statusStage(status) < 5 ? 0 : 1;
+  return (statusStage(status) < 5 && status !== "キャンセル済み") ? 0 : 1;
 }
 function sortOrderRows(list) {
   return list.slice().sort((a, b) => {
@@ -630,7 +670,7 @@ function renderOrderListBody() {
   let rows = "";
   for (const o of visible) {
     const status = o["注文状況"] || "受注のみ";
-    const needsNothing = statusStage(status) === 5;
+    const needsNothing = statusStage(status) === 5 || status === "キャンセル済み";
     const options = STATUS_OPTIONS
       .map((s) => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`)
       .join("");
@@ -898,13 +938,17 @@ let filterSuppliers = new Set(["自社", "取引先", "その他"]);
 let customRangeStart = "";
 let customRangeEnd = "";
 
-// 状況フィルター（全て/仕入前/発送前/発送済み）に、注文の状況(1〜5/5)が合うか判定する
+// 状況フィルター（全て/仕入前/発送前/発送済み/キャンセル済み）に、
+// 注文の状況(1〜5/5、またはキャンセル済み)が合うか判定する
 function statusMatchesFilter(status) {
+  if (filterStatusKey === "all") return true;
+  if (filterStatusKey === "cancelled") return status === "キャンセル済み";
+  if (status === "キャンセル済み") return false; // キャンセル済みは仕入前/発送前/発送済みには含めない
   const stage = statusStage(status);
   if (filterStatusKey === "before_purchase") return stage <= 2;
   if (filterStatusKey === "before_shipping") return stage <= 4;
   if (filterStatusKey === "shipped") return stage === 5;
-  return true; // "all"
+  return true;
 }
 
 // 状況フィルター・仕入先フィルターを注文明細配列に適用する
@@ -1001,19 +1045,24 @@ function wireFilterControls() {
     filterStatusKey = e.target.value;
     renderForSelection();
   });
-  document.getElementById("supplierCheckboxes").addEventListener("change", () => {
-    filterSuppliers = new Set(
-      Array.from(document.querySelectorAll("#supplierCheckboxes input:checked")).map((cb) => cb.value)
-    );
-    renderForSelection();
+
+  wireCheckboxDropdown({
+    dropdownId: "supplierDropdown", triggerId: "supplierTrigger", panelId: "supplierPanel",
+    onChange: (checked) => {
+      filterSuppliers = checked;
+      updateSupplierTriggerLabel();
+      renderForSelection();
+    },
   });
-  document.getElementById("displayTypeCheckboxes").addEventListener("change", () => {
-    const checked = new Set(
-      Array.from(document.querySelectorAll("#displayTypeCheckboxes input:checked")).map((cb) => cb.value)
-    );
-    document.getElementById("orderListPanel").hidden = !checked.has("list");
-    document.getElementById("orderGraphPanel").hidden = !checked.has("graph");
+  wireCheckboxDropdown({
+    dropdownId: "displayTypeDropdown", triggerId: "displayTypeTrigger", panelId: "displayTypePanel",
+    onChange: (checked) => {
+      updateDisplayTypeTriggerLabel(checked);
+      document.getElementById("orderListPanel").hidden = !checked.has("list");
+      document.getElementById("orderGraphPanel").hidden = !checked.has("graph");
+    },
   });
+
   document.getElementById("resetFilterButton").addEventListener("click", () => {
     filterPeriodKey = "month";
     filterStatusKey = "before_shipping";
@@ -1025,12 +1074,50 @@ function wireFilterControls() {
     document.getElementById("customRangeStart").value = "";
     document.getElementById("customRangeEnd").value = "";
     document.getElementById("statusFilterSelect").value = "before_shipping";
-    document.querySelectorAll("#supplierCheckboxes input").forEach((cb) => { cb.checked = true; });
-    document.querySelectorAll("#displayTypeCheckboxes input").forEach((cb) => { cb.checked = cb.value === "list"; });
+    document.querySelectorAll("#supplierPanel input").forEach((cb) => { cb.checked = true; });
+    document.querySelectorAll("#displayTypePanel input").forEach((cb) => { cb.checked = cb.value === "list"; });
+    updateSupplierTriggerLabel();
+    updateDisplayTypeTriggerLabel(new Set(["list"]));
     document.getElementById("orderListPanel").hidden = false;
     document.getElementById("orderGraphPanel").hidden = true;
     renderForSelection();
   });
+}
+
+// チェックボックス付きプルダウン（仕入先・表示タイプ共通）の開閉とチェック変更を配線する
+function wireCheckboxDropdown({ dropdownId, triggerId, panelId, onChange }) {
+  const dropdown = document.getElementById(dropdownId);
+  const trigger = document.getElementById(triggerId);
+  const panel = document.getElementById(panelId);
+  trigger.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+  });
+  document.addEventListener("click", (e) => {
+    if (!dropdown.contains(e.target)) panel.hidden = true;
+  });
+  panel.addEventListener("change", () => {
+    const checked = new Set(
+      Array.from(panel.querySelectorAll("input:checked")).map((cb) => cb.value)
+    );
+    onChange(checked);
+  });
+}
+
+// 仕入先プルダウンのトリガー表示を、選択中のチェックボックスから組み立てる
+function updateSupplierTriggerLabel() {
+  const trigger = document.getElementById("supplierTrigger");
+  const n = filterSuppliers.size;
+  if (n === 0) trigger.textContent = "未選択";
+  else if (n === 3) trigger.textContent = "自社、取引先、その他";
+  else trigger.textContent = Array.from(filterSuppliers).join("、");
+}
+
+// 表示タイププルダウンのトリガー表示を、選択中のチェックボックスから組み立てる
+function updateDisplayTypeTriggerLabel(checked) {
+  const trigger = document.getElementById("displayTypeTrigger");
+  const labelMap = { list: "注文リスト", graph: "注文グラフ" };
+  const labels = Array.from(checked).map((v) => labelMap[v]);
+  trigger.textContent = labels.length ? labels.join("、") : "未選択";
 }
 
 // 注文状況のプルダウンが変更されたら、確認ダイアログを出してからSupabaseへ反映する
@@ -1069,7 +1156,7 @@ function wireStatusSelects() {
         if (target) target["注文状況"] = newStatus;
       }
       select.dataset.prev = newStatus;
-      const needsNothing = statusStage(newStatus) === 5;
+      const needsNothing = statusStage(newStatus) === 5 || newStatus === "キャンセル済み";
       select.closest("tr").classList.toggle("row-cancelled", needsNothing);
     } catch (err) {
       alert("更新に失敗しました: " + err.message);

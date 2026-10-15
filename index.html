@@ -564,8 +564,8 @@ function showDetailModal(o) {
     <dt>JANコード</dt><dd>${o["JAN"] ?? ""}</dd>
     <dt>販売価格</dt><dd>${formatYen(o["販売価格"])}</dd>
     <dt>卸値</dt><dd>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
-    <dt>配送サイズ</dt><dd>${o["配送サイズ"] ?? "-"}</dd>
     <dt>送料</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"}</dd>
+    <dt>配送サイズ</dt><dd>${o["配送サイズ"] ?? "-"}</dd>
     <dt>手数料</dt><dd>${formatYen((o["販売価格"] || 0) * 0.15)}</dd>
     <dt>利益</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</dd>
     <dt>数量</dt><dd>${o["数量"] ?? ""}</dd>

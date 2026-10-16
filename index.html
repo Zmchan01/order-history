@@ -368,7 +368,7 @@ th:first-child, td:first-child { text-align: left; }
 thead th { color: var(--sub); font-weight: 600; font-size: 0.78rem; }
 tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .table-wrap { overflow-x: auto; }
-.order-table { min-width: 560px; }
+.order-table { min-width: 660px; }
 .order-table thead th { text-align: center; }
 .site-amazon { color: var(--amazon); font-weight: 600; }
 .site-mercari { color: var(--mercari); font-weight: 600; }
@@ -494,6 +494,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
             <th>状況</th>
             <th>注文日時/発送日時</th>
             <th>商品名/JAN</th>
+            <th>販売価格/卸値</th>
             <th>仕入先/数量</th>
             <th>送料/手数料</th>
           </tr>
@@ -696,11 +697,12 @@ function renderOrderListBody() {
       <td class="cell-flag"><select class="status-select" data-id="${o["一意キー"]}" data-prev="${status}">${options}</select></td>
       <td>${formatDateTime(o["注文日時"])}<br><span class="sub-line">${formatDateTime(o["出荷日時"])}</span></td>
       <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
+      <td>${formatYen(o["販売価格"])}<br><span class="sub-line">${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</span></td>
       <td>${supplierLabel(o["SKU"])}<br><span class="sub-line">${o["数量"] ?? ""}</span></td>
       <td>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"}<br><span class="sub-line">${formatYen(fee)}</span></td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="5">この期間の注文はありません</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="6">この期間の注文はありません</td></tr>`;
 
   const moreButton = document.getElementById("orderListMoreButton");
   const remaining = list.length - orderListVisibleCount;

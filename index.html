@@ -327,15 +327,20 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   z-index: 1;
 }
 .modal-close:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
-#modalContent { margin: 0; }
+#modalContent {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 6px;
+  align-items: baseline;
+}
 #modalContent dt {
   font-size: 0.78rem;
   color: var(--sub);
-  margin-top: 8px;
 }
-#modalContent dt:first-child { margin-top: 0; }
 #modalContent dd {
-  margin: 2px 0 0;
+  margin: 0;
   font-size: 0.95rem;
   word-break: break-all;
 }

@@ -377,6 +377,29 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .order-table thead th { text-align: center; }
 .site-amazon { color: var(--amazon); font-weight: 600; }
 .site-mercari { color: var(--mercari); font-weight: 600; }
+
+.tab-row {
+  display: flex;
+  gap: 8px;
+}
+.tab-button {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--sub);
+  cursor: pointer;
+}
+.tab-button.active {
+  background: var(--accent-ink);
+  color: var(--bg);
+  border-color: var(--accent-ink);
+}
+.sales-flag-ari { color: var(--amazon); font-weight: 600; }
+.sales-flag-nashi { color: var(--sub); }
 </style>
 </head>
 <body>
@@ -410,6 +433,12 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   </header>
   <p class="caption" id="loadingNotice">データを読み込み中...</p>
 
+  <div class="tab-row">
+    <button type="button" class="tab-button active" id="orderTabButton">受注管理表</button>
+    <button type="button" class="tab-button" id="researchTabButton">リサーチ</button>
+  </div>
+
+  <div id="orderTabView">
   <section class="panel" id="filterPanel">
     <div class="filter-row">
       <label class="filter-field">
@@ -524,6 +553,86 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       <span><i class="swatch line-mercari"></i>Site_M 件数</span>
     </div>
   </section>
+  </div>
+
+  <div id="researchTabView" hidden>
+  <section class="panel" id="researchFilterPanel">
+    <div class="filter-row">
+      <label class="filter-field">
+        <span class="filter-label">期間</span>
+        <select id="periodSelectR">
+          <option value="week">週</option>
+          <option value="month" selected>月</option>
+          <option value="half_year">半年</option>
+          <option value="year">1年</option>
+          <option value="h1">上半期</option>
+          <option value="h2">下半期</option>
+          <option value="all">全て</option>
+          <option value="custom">範囲指定</option>
+        </select>
+      </label>
+      <span class="filter-field custom-range" id="customRangeFieldsR" hidden>
+        <input type="date" id="customRangeStartR">
+        <span>〜</span>
+        <input type="date" id="customRangeEndR">
+      </span>
+      <label class="filter-field">
+        <span class="filter-label">状況</span>
+        <select id="statusFilterSelectR">
+          <option value="all">全て</option>
+          <option value="before_purchase">仕入前</option>
+          <option value="before_shipping" selected>発送前</option>
+          <option value="shipped">発送済み</option>
+          <option value="cancelled">キャンセル済み</option>
+        </select>
+      </label>
+      <div class="filter-field">
+        <span class="filter-label">仕入先</span>
+        <div class="multi-select" id="supplierDropdownR">
+          <button type="button" class="multi-select-trigger" id="supplierTriggerR">自社、取引先、その他</button>
+          <div class="multi-select-panel" id="supplierPanelR" hidden>
+            <label class="multi-select-item"><input type="checkbox" value="自社" checked> 自社</label>
+            <label class="multi-select-item"><input type="checkbox" value="取引先" checked> 取引先</label>
+            <label class="multi-select-item"><input type="checkbox" value="その他" checked> その他</label>
+          </div>
+        </div>
+      </div>
+      <div class="filter-field">
+        <span class="filter-label">売れ筋</span>
+        <div class="multi-select" id="salesFlagDropdownR">
+          <button type="button" class="multi-select-trigger" id="salesFlagTriggerR">アリ、ナシ</button>
+          <div class="multi-select-panel" id="salesFlagPanelR" hidden>
+            <label class="multi-select-item"><input type="checkbox" value="アリ" checked> アリ</label>
+            <label class="multi-select-item"><input type="checkbox" value="ナシ" checked> ナシ</label>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="detail-button" id="resetFilterButtonR">リセット</button>
+    </div>
+  </section>
+
+  <section class="panel" id="researchListPanel">
+    <div class="panel-header">
+      <h2>リサーチ</h2>
+      <p class="caption" id="researchListCaption"></p>
+    </div>
+    <div class="table-wrap">
+      <table class="order-table">
+        <thead>
+          <tr>
+            <th>ランキング</th>
+            <th>商品名/JAN</th>
+            <th>販売価格/定価</th>
+            <th>利益</th>
+            <th>売れ筋</th>
+          </tr>
+        </thead>
+        <tbody id="researchListBody"></tbody>
+      </table>
+    </div>
+    <button type="button" class="detail-button" id="researchListMoreButton" hidden>さらに表示</button>
+  </section>
+  </div>
 </div>
 
 <div class="modal-overlay" id="detailModal" hidden>
@@ -623,6 +732,17 @@ function wireTruncateClicks() {
     orderListVisibleCount += ORDER_LIST_PAGE_SIZE;
     renderOrderListBody();
   });
+
+  document.getElementById("researchListBody").addEventListener("click", (e) => {
+    const row = e.target.closest(".row-clickable");
+    if (!row) return;
+    const o = findOrderByUid(Number(row.dataset.id));
+    if (o) showDetailModal(o);
+  });
+  document.getElementById("researchListMoreButton").addEventListener("click", () => {
+    researchListVisibleCount += RESEARCH_LIST_PAGE_SIZE;
+    renderResearchListBody();
+  });
 }
 
 // 先頭n文字まで表示し、それを超える場合は末尾を省略記号にする
@@ -701,6 +821,61 @@ function renderOrderListBody() {
 
   const moreButton = document.getElementById("orderListMoreButton");
   const remaining = list.length - orderListVisibleCount;
+  if (remaining > 0) {
+    moreButton.hidden = false;
+    moreButton.textContent = `さらに表示（残り${remaining}件）`;
+  } else {
+    moreButton.hidden = true;
+  }
+}
+
+// リサーチリストは10件ずつ表示し、「さらに表示」ボタンで追加分を出す
+const RESEARCH_LIST_PAGE_SIZE = 10;
+let currentResearchList = [];
+let currentResearchLabel = "";
+let researchListVisibleCount = RESEARCH_LIST_PAGE_SIZE;
+
+// ランキングが良い（数字が小さい）順に並べる。ランキング無しは末尾にする
+function sortResearchRows(list) {
+  return list.slice().sort((a, b) => {
+    const ra = a["ランキング"], rb = b["ランキング"];
+    if (ra == null && rb == null) return 0;
+    if (ra == null) return 1;
+    if (rb == null) return -1;
+    return ra - rb;
+  });
+}
+
+function renderResearchList(orders, label) {
+  currentResearchList = sortResearchRows(orders);
+  currentResearchLabel = label;
+  researchListVisibleCount = RESEARCH_LIST_PAGE_SIZE;
+  renderResearchListBody();
+}
+
+function renderResearchListBody() {
+  const tbody = document.getElementById("researchListBody");
+  const caption = document.getElementById("researchListCaption");
+  const list = currentResearchList;
+  caption.textContent = `${currentResearchLabel} の注文: ${list.length}件`;
+
+  const visible = list.slice(0, researchListVisibleCount);
+  let rows = "";
+  for (const o of visible) {
+    const flag = salesFlagOf(o);
+    const flagClass = flag === "アリ" ? "sales-flag-ari" : flag === "ナシ" ? "sales-flag-nashi" : "";
+    rows += `<tr class="row-clickable" data-id="${o["一意キー"]}">
+      <td>${o["ランキング"] ?? "-"}</td>
+      <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
+      <td>${formatYen(o["販売価格"])}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>
+      <td>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</td>
+      <td class="${flagClass}">${flag ?? "-"}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = rows || `<tr><td colspan="5">この期間の注文はありません</td></tr>`;
+
+  const moreButton = document.getElementById("researchListMoreButton");
+  const remaining = list.length - researchListVisibleCount;
   if (remaining > 0) {
     moreButton.hidden = false;
     moreButton.textContent = `さらに表示（残り${remaining}件）`;
@@ -849,8 +1024,10 @@ function getTodayJST() {
 }
 
 // 「表示する範囲」の各プリセットボタンに対応する日付範囲（両端含む）と、
-// グラフを月単位/日単位どちらで分けるかを返す
-function computeRangeForPreset(key) {
+// グラフを月単位/日単位どちらで分けるかを返す。
+// custom指定時の開始/終了日は省略時グローバル（受注管理表タブ）の値を使うが、
+// リサーチタブ用に呼ぶ場合はcustomStart/customEndを明示的に渡す
+function computeRangeForPreset(key, customStart = customRangeStart, customEnd = customRangeEnd) {
   const today = getTodayJST();
   const y = today.getFullYear();
   if (key === "all") {
@@ -889,9 +1066,9 @@ function computeRangeForPreset(key) {
     return { start: toDateStr(monday), end: toDateStr(sunday), granularity: "day" };
   }
   if (key === "custom") {
-    if (!customRangeStart || !customRangeEnd || customRangeStart > customRangeEnd) return null;
-    const days = Math.round((parseDateStr(customRangeEnd) - parseDateStr(customRangeStart)) / 86400000) + 1;
-    return { start: customRangeStart, end: customRangeEnd, granularity: days <= 35 ? "day" : "month" };
+    if (!customStart || !customEnd || customStart > customEnd) return null;
+    const days = Math.round((parseDateStr(customEnd) - parseDateStr(customStart)) / 86400000) + 1;
+    return { start: customStart, end: customEnd, granularity: days <= 35 ? "day" : "month" };
   }
   return null;
 }
@@ -956,16 +1133,19 @@ let customRangeStart = "";
 let customRangeEnd = "";
 
 // 状況フィルター（全て/仕入前/発送前/発送済み/キャンセル済み）に、
-// 注文の状況(1〜5/5、またはキャンセル済み)が合うか判定する
-function statusMatchesFilter(status) {
-  if (filterStatusKey === "all") return true;
-  if (filterStatusKey === "cancelled") return status === "キャンセル済み";
+// 注文の状況(1〜5/5、またはキャンセル済み)が合うか判定する（statusKeyを渡す汎用版。リサーチ側とも共用）
+function statusMatches(status, statusKey) {
+  if (statusKey === "all") return true;
+  if (statusKey === "cancelled") return status === "キャンセル済み";
   if (status === "キャンセル済み") return false; // キャンセル済みは仕入前/発送前/発送済みには含めない
   const stage = statusStage(status);
-  if (filterStatusKey === "before_purchase") return stage <= 2;
-  if (filterStatusKey === "before_shipping") return stage <= 4;
-  if (filterStatusKey === "shipped") return stage === 5;
+  if (statusKey === "before_purchase") return stage <= 2;
+  if (statusKey === "before_shipping") return stage <= 4;
+  if (statusKey === "shipped") return stage === 5;
   return true;
+}
+function statusMatchesFilter(status) {
+  return statusMatches(status, filterStatusKey);
 }
 
 // 状況フィルター・仕入先フィルターを注文明細配列に適用する
@@ -973,6 +1153,32 @@ function applyFilters(orders) {
   return orders.filter(
     (o) => statusMatchesFilter(o["注文状況"] || "受注のみ") && filterSuppliers.has(supplierLabel(o["SKU"]))
   );
+}
+
+// ====== リサーチタブ用のフィルター状態（期間・状況・仕入先・売れ筋） ======
+let filterPeriodKeyR = "month";
+let filterStatusKeyR = "before_shipping";
+let filterSuppliersR = new Set(["自社", "取引先", "その他"]);
+let filterSalesFlagR = new Set(["アリ", "ナシ"]);
+let customRangeStartR = "";
+let customRangeEndR = "";
+
+// 商品の売れ筋（販売価格が定価より大きければ「アリ」、それ以外（同額含む）は「ナシ」。
+// 定価が取得できていない商品はnull（表示は「-」、フィルターでは常に対象に含める）
+function salesFlagOf(o) {
+  if (o["定価"] == null) return null;
+  return o["販売価格"] > o["定価"] ? "アリ" : "ナシ";
+}
+
+// リサーチタブの状況・仕入先・売れ筋フィルターを注文明細配列に適用する
+function applyFiltersR(orders) {
+  return orders.filter((o) => {
+    if (!statusMatches(o["注文状況"] || "受注のみ", filterStatusKeyR)) return false;
+    if (!filterSuppliersR.has(supplierLabel(o["SKU"]))) return false;
+    const flag = salesFlagOf(o);
+    if (flag != null && !filterSalesFlagR.has(flag)) return false;
+    return true;
+  });
 }
 
 // 注文明細配列から、サイト別の件数・金額を集計する
@@ -1043,6 +1249,13 @@ function renderForSelection() {
   renderOrderList(periodOrders, range ? `${range.start} 〜 ${range.end}` : "選択なし");
 }
 
+// リサーチタブ: 選択されている期間・状況・仕入先・売れ筋フィルターに応じてリサーチリストを再描画する
+function renderForSelectionR() {
+  const range = computeRangeForPreset(filterPeriodKeyR, customRangeStartR, customRangeEndR);
+  const periodOrders = applyFiltersR(range ? ordersInRange(range.start, range.end) : []);
+  renderResearchList(periodOrders, range ? `${range.start} 〜 ${range.end}` : "選択なし");
+}
+
 // 期間・状況・仕入先・表示タイプ・リセットの各コントロールを配線する
 function wireFilterControls() {
   document.getElementById("periodSelect").addEventListener("change", (e) => {
@@ -1101,6 +1314,79 @@ function wireFilterControls() {
   });
 }
 
+// リサーチタブの期間・状況・仕入先・売れ筋・リセットの各コントロールを配線する
+function wireResearchFilterControls() {
+  document.getElementById("periodSelectR").addEventListener("change", (e) => {
+    filterPeriodKeyR = e.target.value;
+    document.getElementById("customRangeFieldsR").hidden = filterPeriodKeyR !== "custom";
+    renderForSelectionR();
+  });
+  document.getElementById("customRangeStartR").addEventListener("change", (e) => {
+    customRangeStartR = e.target.value;
+    renderForSelectionR();
+  });
+  document.getElementById("customRangeEndR").addEventListener("change", (e) => {
+    customRangeEndR = e.target.value;
+    renderForSelectionR();
+  });
+  document.getElementById("statusFilterSelectR").addEventListener("change", (e) => {
+    filterStatusKeyR = e.target.value;
+    renderForSelectionR();
+  });
+
+  wireCheckboxDropdown({
+    dropdownId: "supplierDropdownR", triggerId: "supplierTriggerR", panelId: "supplierPanelR",
+    onChange: (checked) => {
+      filterSuppliersR = checked;
+      updateTriggerLabel("supplierTriggerR", filterSuppliersR, ["自社", "取引先", "その他"]);
+      renderForSelectionR();
+    },
+  });
+  wireCheckboxDropdown({
+    dropdownId: "salesFlagDropdownR", triggerId: "salesFlagTriggerR", panelId: "salesFlagPanelR",
+    onChange: (checked) => {
+      filterSalesFlagR = checked;
+      updateTriggerLabel("salesFlagTriggerR", filterSalesFlagR, ["アリ", "ナシ"]);
+      renderForSelectionR();
+    },
+  });
+
+  document.getElementById("resetFilterButtonR").addEventListener("click", () => {
+    filterPeriodKeyR = "month";
+    filterStatusKeyR = "before_shipping";
+    filterSuppliersR = new Set(["自社", "取引先", "その他"]);
+    filterSalesFlagR = new Set(["アリ", "ナシ"]);
+    customRangeStartR = "";
+    customRangeEndR = "";
+    document.getElementById("periodSelectR").value = "month";
+    document.getElementById("customRangeFieldsR").hidden = true;
+    document.getElementById("customRangeStartR").value = "";
+    document.getElementById("customRangeEndR").value = "";
+    document.getElementById("statusFilterSelectR").value = "before_shipping";
+    document.querySelectorAll("#supplierPanelR input").forEach((cb) => { cb.checked = true; });
+    document.querySelectorAll("#salesFlagPanelR input").forEach((cb) => { cb.checked = true; });
+    updateTriggerLabel("supplierTriggerR", filterSuppliersR, ["自社", "取引先", "その他"]);
+    updateTriggerLabel("salesFlagTriggerR", filterSalesFlagR, ["アリ", "ナシ"]);
+    renderForSelectionR();
+  });
+}
+
+// 受注管理表／リサーチタブの切り替えボタンを配線する
+function wireTabButtons() {
+  document.getElementById("orderTabButton").addEventListener("click", () => {
+    document.getElementById("orderTabButton").classList.add("active");
+    document.getElementById("researchTabButton").classList.remove("active");
+    document.getElementById("orderTabView").hidden = false;
+    document.getElementById("researchTabView").hidden = true;
+  });
+  document.getElementById("researchTabButton").addEventListener("click", () => {
+    document.getElementById("researchTabButton").classList.add("active");
+    document.getElementById("orderTabButton").classList.remove("active");
+    document.getElementById("researchTabView").hidden = false;
+    document.getElementById("orderTabView").hidden = true;
+  });
+}
+
 // チェックボックス付きプルダウン（仕入先・表示タイプ共通）の開閉とチェック変更を配線する
 function wireCheckboxDropdown({ dropdownId, triggerId, panelId, onChange }) {
   const dropdown = document.getElementById(dropdownId);
@@ -1135,6 +1421,16 @@ function updateDisplayTypeTriggerLabel(checked) {
   const labelMap = { list: "注文リスト", graph: "注文グラフ" };
   const labels = Array.from(checked).map((v) => labelMap[v]);
   trigger.textContent = labels.length ? labels.join("、") : "未選択";
+}
+
+// チェックボックス付きプルダウン（リサーチタブの仕入先・売れ筋）のトリガー表示を
+// 選択中のチェックボックスから組み立てる汎用版
+function updateTriggerLabel(triggerId, selectedSet, allValues) {
+  const trigger = document.getElementById(triggerId);
+  const n = selectedSet.size;
+  if (n === 0) trigger.textContent = "未選択";
+  else if (n === allValues.length) trigger.textContent = allValues.join("、");
+  else trigger.textContent = allValues.filter((v) => selectedSet.has(v)).join("、");
 }
 
 // 注文状況のプルダウンが変更されたら、確認ダイアログを出してからSupabaseへ反映する
@@ -1294,6 +1590,7 @@ function buildOrderListByMonth(rows) {
       "配送料金": r["配送料金"] != null ? Number(r["配送料金"]) : null,
       "利益": r["利益"] != null ? Number(r["利益"]) : null,
       "在庫数": r["在庫数"] != null ? Number(r["在庫数"]) : null,
+      "定価": r["定価"] != null ? Number(r["定価"]) : null,
       "画像": extractJanImagePath(r["SKU"]),
       "注文日時": r["注文日時"],
       "出荷日時": r["出荷日時"],
@@ -1348,6 +1645,7 @@ async function showDashboard() {
     // 初期表示は期間:月、状況:発送前、仕入先:すべて、表示タイプ:注文リスト
     // （filterPeriodKey等の既定値、およびHTML側のチェック済み状態と一致させている）
     renderForSelection();
+    renderForSelectionR();
   } catch (e) {
     notice.hidden = false;
     notice.textContent = "データの読み込みに失敗しました: " + e.message;
@@ -1382,6 +1680,8 @@ function wireLogoutButton() {
 
 // イベント配線は1回だけ行う（ログイン状態・データの有無に関係ない部分）
 wireFilterControls();
+wireResearchFilterControls();
+wireTabButtons();
 wireStatusSelects();
 wireTruncateClicks();
 wireLoginForm();

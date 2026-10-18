@@ -582,8 +582,7 @@ function showDetailModal(o) {
   // 状況は表示のみ（このポップアップ上からは変更できない。変更は一覧のプルダウンから行う）
   document.getElementById("modalContent").innerHTML = `
     <dt>JANコード</dt><dd>${o["JAN"] ?? ""}</dd>
-    <dt>販売価格</dt><dd>${formatYen(o["販売価格"])}</dd>
-    <dt>卸値</dt><dd>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
+    <dt>販売価格/卸値</dt><dd>${formatYen(o["販売価格"])} / ${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
     <dt>送料</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"}</dd>
     <dt>配送サイズ</dt><dd>${o["配送サイズ"] ?? "-"}</dd>
     <dt>手数料</dt><dd>${formatYen((o["販売価格"] || 0) * 0.15)}</dd>

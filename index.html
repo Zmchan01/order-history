@@ -1650,6 +1650,7 @@ async function showDashboard() {
     // （filterPeriodKey等の既定値、およびHTML側のチェック済み状態と一致させている）
     renderForSelection();
     renderForSelectionR();
+    dashboardLoaded = true;
   } catch (e) {
     notice.hidden = false;
     notice.textContent = "データの読み込みに失敗しました: " + e.message;
@@ -1691,9 +1692,17 @@ wireTruncateClicks();
 wireLoginForm();
 wireLogoutButton();
 
+// Supabaseクライアントは、他のウィンドウ/タブへ移動して戻ってくるとセッションを
+// 再チェックし、SIGNED_INを再度発火させることがある。そのたびにshowDashboard()を
+// 呼び直すと「さらに表示」の展開状態がリセットされてしまうため、
+// 既に読み込み済みの場合は再読み込みしない
+let dashboardLoaded = false;
 supabaseClient.auth.onAuthStateChange((event) => {
-  if (event === "SIGNED_IN") showDashboard();
-  if (event === "SIGNED_OUT") showLoginScreen();
+  if (event === "SIGNED_IN" && !dashboardLoaded) showDashboard();
+  if (event === "SIGNED_OUT") {
+    dashboardLoaded = false;
+    showLoginScreen();
+  }
 });
 
 (async () => {

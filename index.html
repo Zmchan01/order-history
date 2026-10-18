@@ -600,10 +600,11 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       <div class="filter-field">
         <span class="filter-label">売れ筋</span>
         <div class="multi-select" id="salesFlagDropdownR">
-          <button type="button" class="multi-select-trigger" id="salesFlagTriggerR">アリ、ナシ</button>
+          <button type="button" class="multi-select-trigger" id="salesFlagTriggerR">アリ、ナシ、不明</button>
           <div class="multi-select-panel" id="salesFlagPanelR" hidden>
             <label class="multi-select-item"><input type="checkbox" value="アリ" checked> アリ</label>
             <label class="multi-select-item"><input type="checkbox" value="ナシ" checked> ナシ</label>
+            <label class="multi-select-item"><input type="checkbox" value="不明" checked> 不明</label>
           </div>
         </div>
       </div>
@@ -1159,15 +1160,19 @@ function applyFilters(orders) {
 let filterPeriodKeyR = "month";
 let filterStatusKeyR = "before_shipping";
 let filterSuppliersR = new Set(["自社", "取引先", "その他"]);
-let filterSalesFlagR = new Set(["アリ", "ナシ"]);
+let filterSalesFlagR = new Set(["アリ", "ナシ", "不明"]);
 let customRangeStartR = "";
 let customRangeEndR = "";
 
 // 商品の売れ筋（販売価格が定価より大きければ「アリ」、それ以外（同額含む）は「ナシ」。
-// 定価が取得できていない商品はnull（表示は「-」、フィルターでは常に対象に含める）
+// 定価が取得できていない商品はnull（表示は「-」）。フィルター判定にはsalesFlagBucketを使う
 function salesFlagOf(o) {
   if (o["定価"] == null) return null;
   return o["販売価格"] > o["定価"] ? "アリ" : "ナシ";
+}
+// フィルター用: salesFlagOfがnull（定価不明）の場合は「不明」バケットとして扱う
+function salesFlagBucket(o) {
+  return salesFlagOf(o) ?? "不明";
 }
 
 // リサーチタブの状況・仕入先・売れ筋フィルターを注文明細配列に適用する
@@ -1175,8 +1180,7 @@ function applyFiltersR(orders) {
   return orders.filter((o) => {
     if (!statusMatches(o["注文状況"] || "受注のみ", filterStatusKeyR)) return false;
     if (!filterSuppliersR.has(supplierLabel(o["SKU"]))) return false;
-    const flag = salesFlagOf(o);
-    if (flag != null && !filterSalesFlagR.has(flag)) return false;
+    if (!filterSalesFlagR.has(salesFlagBucket(o))) return false;
     return true;
   });
 }
@@ -1346,7 +1350,7 @@ function wireResearchFilterControls() {
     dropdownId: "salesFlagDropdownR", triggerId: "salesFlagTriggerR", panelId: "salesFlagPanelR",
     onChange: (checked) => {
       filterSalesFlagR = checked;
-      updateTriggerLabel("salesFlagTriggerR", filterSalesFlagR, ["アリ", "ナシ"]);
+      updateTriggerLabel("salesFlagTriggerR", filterSalesFlagR, ["アリ", "ナシ", "不明"]);
       renderForSelectionR();
     },
   });
@@ -1355,7 +1359,7 @@ function wireResearchFilterControls() {
     filterPeriodKeyR = "month";
     filterStatusKeyR = "before_shipping";
     filterSuppliersR = new Set(["自社", "取引先", "その他"]);
-    filterSalesFlagR = new Set(["アリ", "ナシ"]);
+    filterSalesFlagR = new Set(["アリ", "ナシ", "不明"]);
     customRangeStartR = "";
     customRangeEndR = "";
     document.getElementById("periodSelectR").value = "month";
@@ -1366,7 +1370,7 @@ function wireResearchFilterControls() {
     document.querySelectorAll("#supplierPanelR input").forEach((cb) => { cb.checked = true; });
     document.querySelectorAll("#salesFlagPanelR input").forEach((cb) => { cb.checked = true; });
     updateTriggerLabel("supplierTriggerR", filterSuppliersR, ["自社", "取引先", "その他"]);
-    updateTriggerLabel("salesFlagTriggerR", filterSalesFlagR, ["アリ", "ナシ"]);
+    updateTriggerLabel("salesFlagTriggerR", filterSalesFlagR, ["アリ", "ナシ", "不明"]);
     renderForSelectionR();
   });
 }

@@ -702,7 +702,7 @@ function showResearchDetailModal(o) {
     <dt>メーカー名/JANコード</dt><dd>${o["メーカー名"] ?? "-"} / ${o["JAN"] ?? ""}</dd>
     <dt>トップカート価格/卸値</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
-    <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${o["在庫数"] ?? "-"}</dd>
+    <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${stockBreakdownText(o)}</dd>
     <dt>利益/ランキング</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"} / ${o["ランキング"] ?? "-"}</dd>
   `;
   document.getElementById("detailModal").hidden = false;
@@ -1634,7 +1634,15 @@ function buildStockdbList(rows) {
     "配送料金": r["配送料金"] != null ? Number(r["配送料金"]) : null,
     "卸値": r["卸値"] != null ? Number(r["卸値"]) : null,
     "メーカー名": r["メーカー名"],
+    "在庫数_自社": r["在庫数_自社"] != null ? Number(r["在庫数_自社"]) : 0,
+    "在庫数_tc": r["在庫数_tc"] != null ? Number(r["在庫数_tc"]) : 0,
   }));
+}
+
+// 在庫数を「合計(内訳: TC X件 / 自社 Y件)」の形で表示する文字列を作る
+function stockBreakdownText(o) {
+  const total = o["在庫数"] ?? 0;
+  return `${total}(内訳: TC ${o["在庫数_tc"] ?? 0}件 / 自社 ${o["在庫数_自社"] ?? 0}件)`;
 }
 
 // 「システム状態」テーブルから、GASがGmailを最後にチェックした時刻を取得して表示する

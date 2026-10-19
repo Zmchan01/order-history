@@ -695,14 +695,22 @@ function showResearchDetailModal(o) {
     img.hidden = true;
   }
 
+  // 受注管理表のポップアップと同じ並びにする。販売価格はトップカート価格を使う。
+  // 卸値・状況の枠は注文には存在しないため、代わりにリサーチで意味のある定価・売れ筋を表示する。
+  // 数量・サイト名・注文番号・注文日時・発送日時は本当に存在しないため「-」にする
+  const price = o["トップカート価格"];
+  const sku = [o["SKU_自社"], o["SKU_tc"]].filter(Boolean).join("、");
   const flag = salesFlagOf(o);
   document.getElementById("modalContent").innerHTML = `
-    <dt>JANコード</dt><dd>${o["JAN"] ?? ""}</dd>
-    <dt>トップカート価格/定価</dt><dd>${o["トップカート価格"] != null ? formatYen(o["トップカート価格"]) : "-"} / ${o["定価"] != null ? formatYen(o["定価"]) : "-"}</dd>
-    <dt>利益/ランキング</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"} / ${o["ランキング"] ?? "-"}</dd>
-    <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${o["在庫数"] ?? "-"}</dd>
+    <dt>メーカー名/JANコード</dt><dd>- / ${o["JAN"] ?? ""}</dd>
+    <dt>販売価格/定価</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["定価"] != null ? formatYen(o["定価"]) : "-"}</dd>
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
-    <dt>売れ筋</dt><dd>${flag ?? "-"}</dd>
+    <dt>仕入先/売れ筋</dt><dd>${productSupplierLabels(o).join("、")} / ${flag ?? "-"}</dd>
+    <dt>数量/在庫数</dt><dd>- / ${o["在庫数"] ?? "-"}</dd>
+    <dt>利益/ランキング</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"} / ${o["ランキング"] ?? "-"}</dd>
+    <dt>サイト名/手数料</dt><dd>- / ${price != null ? formatYen(price * 0.15) : "-"}</dd>
+    <dt>注文番号/SKU</dt><dd>- / ${sku || "-"}</dd>
+    <dt>注文日時/発送日時</dt><dd>- / -</dd>
   `;
   document.getElementById("detailModal").hidden = false;
 }

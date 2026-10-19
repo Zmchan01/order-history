@@ -675,12 +675,48 @@ function showDetailModal(o) {
   document.getElementById("detailModal").hidden = false;
 }
 
+// リサーチタブ用: stockdbの商品情報（注文ではないため、注文番号・発送日時等は無い）を
+// 同じポップアップ（detailModal）に表示する
+function showResearchDetailModal(o) {
+  document.getElementById("modalTitle").textContent = o["商品名"] ?? "";
+
+  const img = document.getElementById("modalImage");
+  const imgPath = o["JAN"] ? `images/${o["JAN"]}.jpg` : null;
+  if (imgPath) {
+    img.onerror = () => {
+      img.hidden = true;
+    };
+    img.alt = "商品画像";
+    img.src = imgPath;
+    img.hidden = false;
+  } else {
+    img.onerror = null;
+    img.removeAttribute("src");
+    img.hidden = true;
+  }
+
+  const flag = salesFlagOf(o);
+  document.getElementById("modalContent").innerHTML = `
+    <dt>JANコード</dt><dd>${o["JAN"] ?? ""}</dd>
+    <dt>トップカート価格/定価</dt><dd>${o["トップカート価格"] != null ? formatYen(o["トップカート価格"]) : "-"} / ${o["定価"] != null ? formatYen(o["定価"]) : "-"}</dd>
+    <dt>利益/ランキング</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"} / ${o["ランキング"] ?? "-"}</dd>
+    <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${o["在庫数"] ?? "-"}</dd>
+    <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
+    <dt>売れ筋</dt><dd>${flag ?? "-"}</dd>
+  `;
+  document.getElementById("detailModal").hidden = false;
+}
+
 function findOrderByUid(id) {
   for (const months of Object.values(ORDER_LIST)) {
     const target = months.find((o) => o["一意キー"] === id);
     if (target) return target;
   }
   return null;
+}
+
+function findStockdbByJan(jan) {
+  return (STOCKDB_LIST || []).find((o) => o["JAN"] === jan) || null;
 }
 
 function wireTruncateClicks() {
@@ -706,6 +742,12 @@ function wireTruncateClicks() {
     renderOrderListBody();
   });
 
+  document.getElementById("researchListBody").addEventListener("click", (e) => {
+    const row = e.target.closest(".row-clickable");
+    if (!row) return;
+    const o = findStockdbByJan(row.dataset.jan);
+    if (o) showResearchDetailModal(o);
+  });
   document.getElementById("researchListMoreButton").addEventListener("click", () => {
     researchListVisibleCount += RESEARCH_LIST_PAGE_SIZE;
     renderResearchListBody();
@@ -831,7 +873,7 @@ function renderResearchListBody() {
   for (const o of visible) {
     const flag = salesFlagOf(o);
     const flagClass = flag === "アリ" ? "sales-flag-ari" : flag === "ナシ" ? "sales-flag-nashi" : "";
-    rows += `<tr data-jan="${o["JAN"] ?? ""}">
+    rows += `<tr class="row-clickable" data-jan="${o["JAN"] ?? ""}">
       <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
       <td>${o["ランキング"] ?? "-"}</td>
       <td>${o["トップカート価格"] != null ? formatYen(o["トップカート価格"]) : "-"}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>

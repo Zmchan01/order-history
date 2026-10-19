@@ -62,7 +62,7 @@ body {
   padding-block: 28px;
 }
 .wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
-#orderTabView, #researchTabView { display: flex; flex-direction: column; gap: 72px; }
+#orderTabView, #researchTabView { display: flex; flex-direction: column; gap: 36px; }
 
 .login-screen {
   min-height: 100vh;
@@ -622,8 +622,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       <table class="order-table">
         <thead>
           <tr>
-            <th>ランキング</th>
             <th>商品名/JAN</th>
+            <th>ランキング</th>
             <th>販売価格/定価</th>
             <th>利益</th>
             <th>売れ筋</th>
@@ -867,8 +867,8 @@ function renderResearchListBody() {
     const flag = salesFlagOf(o);
     const flagClass = flag === "アリ" ? "sales-flag-ari" : flag === "ナシ" ? "sales-flag-nashi" : "";
     rows += `<tr class="row-clickable" data-id="${o["一意キー"]}">
-      <td>${o["ランキング"] ?? "-"}</td>
       <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
+      <td>${o["ランキング"] ?? "-"}</td>
       <td>${formatYen(o["販売価格"])}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>
       <td>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</td>
       <td class="${flagClass}">${flag ?? "-"}</td>

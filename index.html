@@ -562,8 +562,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       <label class="filter-field">
         <span class="filter-label">在庫状況</span>
         <select id="stockFilterSelectR">
-          <option value="all" selected>全て</option>
-          <option value="in_stock">アリ</option>
+          <option value="all">全て</option>
+          <option value="in_stock" selected>アリ</option>
           <option value="out_of_stock">ナシ</option>
         </select>
       </label>
@@ -1169,7 +1169,7 @@ function applyFilters(orders) {
 // リサーチタブはstockdb全商品ベース（注文とは無関係）のため、注文日時・注文状況が無く
 // 「期間」「状況（注文の状況）」フィルターは成り立たない。代わりに在庫状況で絞り込む。
 // 一覧自体が「売れ筋アリ」の商品だけを対象にするため、売れ筋での絞り込みは不要（常にアリのみ）
-let filterStockKeyR = "all";
+let filterStockKeyR = "in_stock";
 let filterSuppliersR = new Set(["自社", "取引先", "その他"]);
 
 // 売れ筋「アリ」とみなすための、トップカート価格が定価を上回る最低額
@@ -1360,9 +1360,9 @@ function wireResearchFilterControls() {
     },
   });
   document.getElementById("resetFilterButtonR").addEventListener("click", () => {
-    filterStockKeyR = "all";
+    filterStockKeyR = "in_stock";
     filterSuppliersR = new Set(["自社", "取引先", "その他"]);
-    document.getElementById("stockFilterSelectR").value = "all";
+    document.getElementById("stockFilterSelectR").value = "in_stock";
     document.querySelectorAll("#supplierPanelR input").forEach((cb) => { cb.checked = true; });
     updateTriggerLabel("supplierTriggerR", filterSuppliersR, ["自社", "取引先", "その他"]);
     renderForSelectionR();

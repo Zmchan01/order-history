@@ -1129,11 +1129,14 @@ function applyFilters(orders) {
 let filterStockKeyR = "all";
 let filterSuppliersR = new Set(["自社", "取引先", "その他"]);
 
-// 商品の売れ筋（トップカート価格が定価より大きければ「アリ」、それ以外（同額含む）は「ナシ」。
+// 売れ筋「アリ」とみなすための、トップカート価格が定価を上回る最低額
+const SALES_FLAG_THRESHOLD = 1000;
+
+// 商品の売れ筋（トップカート価格が定価よりSALES_FLAG_THRESHOLD円以上大きければ「アリ」、それ以外は「ナシ」。
 // 定価・トップカート価格のどちらかが無い商品はnull
 function salesFlagOf(o) {
   if (o["定価"] == null || o["トップカート価格"] == null) return null;
-  return o["トップカート価格"] > o["定価"] ? "アリ" : "ナシ";
+  return (o["トップカート価格"] - o["定価"]) >= SALES_FLAG_THRESHOLD ? "アリ" : "ナシ";
 }
 
 // stockdbの商品行（SKU_自社/SKU_tcの有無）から、該当する仕入先ラベルの集合を返す

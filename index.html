@@ -696,15 +696,14 @@ function showResearchDetailModal(o) {
   }
 
   // 指定された並び（メーカー名/JANコード、トップカート価格/卸値、送料/配送サイズ、
-  // 仕入先/状況、在庫数/手数料、利益/ランキング）で表示する。
-  // メーカー名・卸値・状況はstockdbの商品情報には無いため「-」にする
+  // 仕入先/在庫数、利益/ランキング）で表示する。
+  // メーカー名・卸値はstockdbの商品情報には無いため「-」にする
   const price = o["トップカート価格"];
   document.getElementById("modalContent").innerHTML = `
     <dt>メーカー名/JANコード</dt><dd>- / ${o["JAN"] ?? ""}</dd>
     <dt>トップカート価格/卸値</dt><dd>${price != null ? formatYen(price) : "-"} / -</dd>
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
-    <dt>仕入先/状況</dt><dd>${productSupplierLabels(o).join("、")} / -</dd>
-    <dt>在庫数/手数料</dt><dd>${o["在庫数"] ?? "-"} / ${price != null ? formatYen(price * 0.15) : "-"}</dd>
+    <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${o["在庫数"] ?? "-"}</dd>
     <dt>利益/ランキング</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"} / ${o["ランキング"] ?? "-"}</dd>
   `;
   document.getElementById("detailModal").hidden = false;

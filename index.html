@@ -560,31 +560,11 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   <section class="panel" id="researchFilterPanel">
     <div class="filter-row">
       <label class="filter-field">
-        <span class="filter-label">期間</span>
-        <select id="periodSelectR">
-          <option value="week">週</option>
-          <option value="month" selected>月</option>
-          <option value="half_year">半年</option>
-          <option value="year">1年</option>
-          <option value="h1">上半期</option>
-          <option value="h2">下半期</option>
-          <option value="all">全て</option>
-          <option value="custom">範囲指定</option>
-        </select>
-      </label>
-      <span class="filter-field custom-range" id="customRangeFieldsR" hidden>
-        <input type="date" id="customRangeStartR">
-        <span>〜</span>
-        <input type="date" id="customRangeEndR">
-      </span>
-      <label class="filter-field">
-        <span class="filter-label">状況</span>
-        <select id="statusFilterSelectR">
-          <option value="all">全て</option>
-          <option value="before_purchase">仕入前</option>
-          <option value="before_shipping" selected>発送前</option>
-          <option value="shipped">発送済み</option>
-          <option value="cancelled">キャンセル済み</option>
+        <span class="filter-label">在庫状況</span>
+        <select id="stockFilterSelectR">
+          <option value="all" selected>全て</option>
+          <option value="in_stock">アリ</option>
+          <option value="out_of_stock">ナシ</option>
         </select>
       </label>
       <div class="filter-field">
@@ -624,7 +604,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           <tr>
             <th>商品名/JAN</th>
             <th>ランキング</th>
-            <th>販売価格/定価</th>
+            <th>トップカート価格/定価</th>
             <th>利益</th>
             <th>売れ筋</th>
           </tr>
@@ -657,6 +637,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 let DATA = null;
 // サイト別・月別の注文明細一覧（キー=YYYY-MM）。卸値はstockdbとJANで紐付け済み
 let ORDER_LIST = null;
+// リサーチタブ用: stockdb全商品（Amazon商品ページから取得したトップカート価格・ランキング付き）の一覧
+let STOCKDB_LIST = null;
 
 // 注文状況の更新（update_order_statusというRPC関数しか呼べない権限のanonキー）
 const SUPABASE_URL = "https://ragdqeiuiphlhvathrqb.supabase.co";
@@ -735,12 +717,6 @@ function wireTruncateClicks() {
     renderOrderListBody();
   });
 
-  document.getElementById("researchListBody").addEventListener("click", (e) => {
-    const row = e.target.closest(".row-clickable");
-    if (!row) return;
-    const o = findOrderByUid(Number(row.dataset.id));
-    if (o) showDetailModal(o);
-  });
   document.getElementById("researchListMoreButton").addEventListener("click", () => {
     researchListVisibleCount += RESEARCH_LIST_PAGE_SIZE;
     renderResearchListBody();
@@ -848,8 +824,8 @@ function sortResearchRows(list) {
   });
 }
 
-function renderResearchList(orders, label) {
-  currentResearchList = sortResearchRows(orders);
+function renderResearchList(products, label) {
+  currentResearchList = sortResearchRows(products);
   currentResearchLabel = label;
   researchListVisibleCount = RESEARCH_LIST_PAGE_SIZE;
   renderResearchListBody();
@@ -859,22 +835,22 @@ function renderResearchListBody() {
   const tbody = document.getElementById("researchListBody");
   const caption = document.getElementById("researchListCaption");
   const list = currentResearchList;
-  caption.textContent = `${currentResearchLabel} の注文: ${list.length}件`;
+  caption.textContent = `${currentResearchLabel}: ${list.length}件`;
 
   const visible = list.slice(0, researchListVisibleCount);
   let rows = "";
   for (const o of visible) {
     const flag = salesFlagOf(o);
     const flagClass = flag === "アリ" ? "sales-flag-ari" : flag === "ナシ" ? "sales-flag-nashi" : "";
-    rows += `<tr class="row-clickable" data-id="${o["一意キー"]}">
+    rows += `<tr data-jan="${o["JAN"] ?? ""}">
       <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
       <td>${o["ランキング"] ?? "-"}</td>
-      <td>${formatYen(o["販売価格"])}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>
+      <td>${o["トップカート価格"] != null ? formatYen(o["トップカート価格"]) : "-"}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>
       <td>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</td>
       <td class="${flagClass}">${flag ?? "-"}</td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="5">この期間の注文はありません</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="5">該当する商品はありません</td></tr>`;
 
   const moreButton = document.getElementById("researchListMoreButton");
   const remaining = list.length - researchListVisibleCount;
@@ -1157,30 +1133,47 @@ function applyFilters(orders) {
   );
 }
 
-// ====== リサーチタブ用のフィルター状態（期間・状況・仕入先・売れ筋） ======
-let filterPeriodKeyR = "month";
-let filterStatusKeyR = "before_shipping";
+// ====== リサーチタブ用のフィルター状態（在庫状況・仕入先・売れ筋） ======
+// リサーチタブはstockdb全商品ベース（注文とは無関係）のため、注文日時・注文状況が無く
+// 「期間」「状況（注文の状況）」フィルターは成り立たない。代わりに在庫状況で絞り込む
+let filterStockKeyR = "all";
 let filterSuppliersR = new Set(["自社", "取引先", "その他"]);
 let filterSalesFlagR = new Set(["アリ", "ナシ", "不明"]);
-let customRangeStartR = "";
-let customRangeEndR = "";
 
-// 商品の売れ筋（販売価格が定価より大きければ「アリ」、それ以外（同額含む）は「ナシ」。
-// 定価が取得できていない商品はnull（表示は「-」）。フィルター判定にはsalesFlagBucketを使う
+// 商品の売れ筋（トップカート価格が定価より大きければ「アリ」、それ以外（同額含む）は「ナシ」。
+// 定価・トップカート価格のどちらかが無い商品はnull（表示は「-」）。フィルター判定にはsalesFlagBucketを使う
 function salesFlagOf(o) {
-  if (o["定価"] == null) return null;
-  return o["販売価格"] > o["定価"] ? "アリ" : "ナシ";
+  if (o["定価"] == null || o["トップカート価格"] == null) return null;
+  return o["トップカート価格"] > o["定価"] ? "アリ" : "ナシ";
 }
-// フィルター用: salesFlagOfがnull（定価不明）の場合は「不明」バケットとして扱う
+// フィルター用: salesFlagOfがnull（判定不可）の場合は「不明」バケットとして扱う
 function salesFlagBucket(o) {
   return salesFlagOf(o) ?? "不明";
 }
 
-// リサーチタブの状況・仕入先・売れ筋フィルターを注文明細配列に適用する
-function applyFiltersR(orders) {
-  return orders.filter((o) => {
-    if (!statusMatches(o["注文状況"] || "受注のみ", filterStatusKeyR)) return false;
-    if (!filterSuppliersR.has(supplierLabel(o["SKU"]))) return false;
+// stockdbの商品行（SKU_自社/SKU_tcの有無）から、該当する仕入先ラベルの集合を返す
+// （1商品が自社・取引先どちらにも出品されている場合は両方に属する）
+function productSupplierLabels(o) {
+  const labels = [];
+  if (o["SKU_自社"]) labels.push("自社");
+  if (o["SKU_tc"]) labels.push("取引先");
+  if (labels.length === 0) labels.push("その他");
+  return labels;
+}
+
+// 在庫状況フィルター（全て/アリ/ナシ）に、商品の在庫数が合うか判定する
+function stockMatchesFilter(stock) {
+  if (filterStockKeyR === "all") return true;
+  if (filterStockKeyR === "in_stock") return (stock || 0) > 0;
+  if (filterStockKeyR === "out_of_stock") return !stock || stock <= 0;
+  return true;
+}
+
+// リサーチタブの在庫状況・仕入先・売れ筋フィルターを商品明細配列に適用する
+function applyFiltersR(products) {
+  return products.filter((o) => {
+    if (!stockMatchesFilter(o["在庫数"])) return false;
+    if (!productSupplierLabels(o).some((l) => filterSuppliersR.has(l))) return false;
     if (!filterSalesFlagR.has(salesFlagBucket(o))) return false;
     return true;
   });
@@ -1254,11 +1247,11 @@ function renderForSelection() {
   renderOrderList(periodOrders, range ? `${range.start} 〜 ${range.end}` : "選択なし");
 }
 
-// リサーチタブ: 選択されている期間・状況・仕入先・売れ筋フィルターに応じてリサーチリストを再描画する
+// リサーチタブ: 選択されている在庫状況・仕入先・売れ筋フィルターに応じてリサーチリストを再描画する
+// （stockdb全商品ベースのため、注文のような期間絞り込みは行わない）
 function renderForSelectionR() {
-  const range = computeRangeForPreset(filterPeriodKeyR, customRangeStartR, customRangeEndR);
-  const periodOrders = applyFiltersR(range ? ordersInRange(range.start, range.end) : []);
-  renderResearchList(periodOrders, range ? `${range.start} 〜 ${range.end}` : "選択なし");
+  const filtered = applyFiltersR(STOCKDB_LIST || []);
+  renderResearchList(filtered, "stockdb全商品");
 }
 
 // 期間・状況・仕入先・表示タイプ・リセットの各コントロールを配線する
@@ -1319,23 +1312,10 @@ function wireFilterControls() {
   });
 }
 
-// リサーチタブの期間・状況・仕入先・売れ筋・リセットの各コントロールを配線する
+// リサーチタブの在庫状況・仕入先・売れ筋・リセットの各コントロールを配線する
 function wireResearchFilterControls() {
-  document.getElementById("periodSelectR").addEventListener("change", (e) => {
-    filterPeriodKeyR = e.target.value;
-    document.getElementById("customRangeFieldsR").hidden = filterPeriodKeyR !== "custom";
-    renderForSelectionR();
-  });
-  document.getElementById("customRangeStartR").addEventListener("change", (e) => {
-    customRangeStartR = e.target.value;
-    renderForSelectionR();
-  });
-  document.getElementById("customRangeEndR").addEventListener("change", (e) => {
-    customRangeEndR = e.target.value;
-    renderForSelectionR();
-  });
-  document.getElementById("statusFilterSelectR").addEventListener("change", (e) => {
-    filterStatusKeyR = e.target.value;
+  document.getElementById("stockFilterSelectR").addEventListener("change", (e) => {
+    filterStockKeyR = e.target.value;
     renderForSelectionR();
   });
 
@@ -1357,17 +1337,10 @@ function wireResearchFilterControls() {
   });
 
   document.getElementById("resetFilterButtonR").addEventListener("click", () => {
-    filterPeriodKeyR = "month";
-    filterStatusKeyR = "before_shipping";
+    filterStockKeyR = "all";
     filterSuppliersR = new Set(["自社", "取引先", "その他"]);
     filterSalesFlagR = new Set(["アリ", "ナシ", "不明"]);
-    customRangeStartR = "";
-    customRangeEndR = "";
-    document.getElementById("periodSelectR").value = "month";
-    document.getElementById("customRangeFieldsR").hidden = true;
-    document.getElementById("customRangeStartR").value = "";
-    document.getElementById("customRangeEndR").value = "";
-    document.getElementById("statusFilterSelectR").value = "before_shipping";
+    document.getElementById("stockFilterSelectR").value = "all";
     document.querySelectorAll("#supplierPanelR input").forEach((cb) => { cb.checked = true; });
     document.querySelectorAll("#salesFlagPanelR input").forEach((cb) => { cb.checked = true; });
     updateTriggerLabel("supplierTriggerR", filterSuppliersR, ["自社", "取引先", "その他"]);
@@ -1519,6 +1492,25 @@ async function fetchAllOrderRows() {
   return allRows;
 }
 
+// 「stockdb_リサーチ_表示用」ビューを1000件ずつページ送りして全件取得する
+async function fetchAllResearchRows() {
+  const pageSize = 1000;
+  let from = 0;
+  let allRows = [];
+  while (true) {
+    const { data, error } = await supabaseClient
+      .from("stockdb_リサーチ_表示用")
+      .select("*")
+      .order("JAN")
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return allRows;
+}
+
 // 取得した行から、グラフ用の月次集計（取消済みは除外）を組み立てる
 function buildMonthlyData(rows) {
   const monthly = {};
@@ -1606,6 +1598,23 @@ function buildOrderListByMonth(rows) {
   return byMonth;
 }
 
+// 取得した行を、リサーチタブ表示用の数値型に整形する（注文とは無関係のstockdb全商品）
+function buildStockdbList(rows) {
+  return rows.map((r) => ({
+    "JAN": r["JAN"],
+    "商品名": r["商品名"],
+    "SKU_自社": r["SKU_自社"],
+    "SKU_tc": r["SKU_tc"],
+    "在庫数": r["在庫数"] != null ? Number(r["在庫数"]) : null,
+    "トップカート価格": r["トップカート価格"] != null ? Number(r["トップカート価格"]) : null,
+    "ランキング": r["ランキング"] != null ? Number(r["ランキング"]) : null,
+    "定価": r["定価"] != null ? Number(r["定価"]) : null,
+    "利益": r["利益"] != null ? Number(r["利益"]) : null,
+    "配送サイズ": r["配送サイズ"],
+    "配送料金": r["配送料金"] != null ? Number(r["配送料金"]) : null,
+  }));
+}
+
 // 「システム状態」テーブルから、GASがGmailを最後にチェックした時刻を取得して表示する
 // （新規注文が見つかったかどうかに関わらず記録されている値）
 async function renderLastChecked() {
@@ -1641,6 +1650,9 @@ async function showDashboard() {
     const rows = await fetchAllOrderRows();
     DATA = buildMonthlyData(rows);
     ORDER_LIST = buildOrderListByMonth(rows);
+
+    const stockdbRows = await fetchAllResearchRows();
+    STOCKDB_LIST = buildStockdbList(stockdbRows);
     notice.hidden = true;
 
     // GASが「新規注文が来ていないか見に行った」時刻を表示する

@@ -578,17 +578,6 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           </div>
         </div>
       </div>
-      <div class="filter-field">
-        <span class="filter-label">売れ筋</span>
-        <div class="multi-select" id="salesFlagDropdownR">
-          <button type="button" class="multi-select-trigger" id="salesFlagTriggerR">アリ、ナシ、不明</button>
-          <div class="multi-select-panel" id="salesFlagPanelR" hidden>
-            <label class="multi-select-item"><input type="checkbox" value="アリ" checked> アリ</label>
-            <label class="multi-select-item"><input type="checkbox" value="ナシ" checked> ナシ</label>
-            <label class="multi-select-item"><input type="checkbox" value="不明" checked> 不明</label>
-          </div>
-        </div>
-      </div>
       <button type="button" class="detail-button" id="resetFilterButtonR">リセット</button>
     </div>
   </section>
@@ -1133,22 +1122,18 @@ function applyFilters(orders) {
   );
 }
 
-// ====== リサーチタブ用のフィルター状態（在庫状況・仕入先・売れ筋） ======
+// ====== リサーチタブ用のフィルター状態（在庫状況・仕入先） ======
 // リサーチタブはstockdb全商品ベース（注文とは無関係）のため、注文日時・注文状況が無く
-// 「期間」「状況（注文の状況）」フィルターは成り立たない。代わりに在庫状況で絞り込む
+// 「期間」「状況（注文の状況）」フィルターは成り立たない。代わりに在庫状況で絞り込む。
+// 一覧自体が「売れ筋アリ」の商品だけを対象にするため、売れ筋での絞り込みは不要（常にアリのみ）
 let filterStockKeyR = "all";
 let filterSuppliersR = new Set(["自社", "取引先", "その他"]);
-let filterSalesFlagR = new Set(["アリ", "ナシ", "不明"]);
 
 // 商品の売れ筋（トップカート価格が定価より大きければ「アリ」、それ以外（同額含む）は「ナシ」。
-// 定価・トップカート価格のどちらかが無い商品はnull（表示は「-」）。フィルター判定にはsalesFlagBucketを使う
+// 定価・トップカート価格のどちらかが無い商品はnull
 function salesFlagOf(o) {
   if (o["定価"] == null || o["トップカート価格"] == null) return null;
   return o["トップカート価格"] > o["定価"] ? "アリ" : "ナシ";
-}
-// フィルター用: salesFlagOfがnull（判定不可）の場合は「不明」バケットとして扱う
-function salesFlagBucket(o) {
-  return salesFlagOf(o) ?? "不明";
 }
 
 // stockdbの商品行（SKU_自社/SKU_tcの有無）から、該当する仕入先ラベルの集合を返す
@@ -1169,12 +1154,13 @@ function stockMatchesFilter(stock) {
   return true;
 }
 
-// リサーチタブの在庫状況・仕入先・売れ筋フィルターを商品明細配列に適用する
+// リサーチタブの在庫状況・仕入先フィルターを商品明細配列に適用する。
+// 売れ筋「アリ」の商品だけを対象にする
 function applyFiltersR(products) {
   return products.filter((o) => {
+    if (salesFlagOf(o) !== "アリ") return false;
     if (!stockMatchesFilter(o["在庫数"])) return false;
     if (!productSupplierLabels(o).some((l) => filterSuppliersR.has(l))) return false;
-    if (!filterSalesFlagR.has(salesFlagBucket(o))) return false;
     return true;
   });
 }
@@ -1327,24 +1313,12 @@ function wireResearchFilterControls() {
       renderForSelectionR();
     },
   });
-  wireCheckboxDropdown({
-    dropdownId: "salesFlagDropdownR", triggerId: "salesFlagTriggerR", panelId: "salesFlagPanelR",
-    onChange: (checked) => {
-      filterSalesFlagR = checked;
-      updateTriggerLabel("salesFlagTriggerR", filterSalesFlagR, ["アリ", "ナシ", "不明"]);
-      renderForSelectionR();
-    },
-  });
-
   document.getElementById("resetFilterButtonR").addEventListener("click", () => {
     filterStockKeyR = "all";
     filterSuppliersR = new Set(["自社", "取引先", "その他"]);
-    filterSalesFlagR = new Set(["アリ", "ナシ", "不明"]);
     document.getElementById("stockFilterSelectR").value = "all";
     document.querySelectorAll("#supplierPanelR input").forEach((cb) => { cb.checked = true; });
-    document.querySelectorAll("#salesFlagPanelR input").forEach((cb) => { cb.checked = true; });
     updateTriggerLabel("supplierTriggerR", filterSuppliersR, ["自社", "取引先", "その他"]);
-    updateTriggerLabel("salesFlagTriggerR", filterSalesFlagR, ["アリ", "ナシ", "不明"]);
     renderForSelectionR();
   });
 }

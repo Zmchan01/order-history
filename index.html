@@ -696,12 +696,11 @@ function showResearchDetailModal(o) {
   }
 
   // 指定された並び（メーカー名/JANコード、トップカート価格/卸値、送料/配送サイズ、
-  // 仕入先/在庫数、利益/ランキング）で表示する。
-  // メーカー名・卸値はstockdbの商品情報には無いため「-」にする
+  // 仕入先/在庫数、利益/ランキング）で表示する
   const price = o["トップカート価格"];
   document.getElementById("modalContent").innerHTML = `
-    <dt>メーカー名/JANコード</dt><dd>- / ${o["JAN"] ?? ""}</dd>
-    <dt>トップカート価格/卸値</dt><dd>${price != null ? formatYen(price) : "-"} / -</dd>
+    <dt>メーカー名/JANコード</dt><dd>${o["メーカー名"] ?? "-"} / ${o["JAN"] ?? ""}</dd>
+    <dt>トップカート価格/卸値</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
     <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${o["在庫数"] ?? "-"}</dd>
     <dt>利益/ランキング</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"} / ${o["ランキング"] ?? "-"}</dd>
@@ -1633,6 +1632,8 @@ function buildStockdbList(rows) {
     "利益": r["利益"] != null ? Number(r["利益"]) : null,
     "配送サイズ": r["配送サイズ"],
     "配送料金": r["配送料金"] != null ? Number(r["配送料金"]) : null,
+    "卸値": r["卸値"] != null ? Number(r["卸値"]) : null,
+    "メーカー名": r["メーカー名"],
   }));
 }
 

@@ -471,6 +471,17 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
         </select>
       </label>
       <div class="filter-field">
+        <span class="filter-label">判定状況</span>
+        <div class="multi-select" id="judgmentDropdown">
+          <button type="button" class="multi-select-trigger" id="judgmentTrigger">全て</button>
+          <div class="multi-select-panel" id="judgmentPanel" hidden>
+            <label class="multi-select-item"><input type="checkbox" value="売れ筋見込アリ" checked> 見込アリ</label>
+            <label class="multi-select-item"><input type="checkbox" value="売れ筋見込ナシ" checked> 見込ナシ</label>
+            <label class="multi-select-item"><input type="checkbox" value="売れ筋確定" checked> 確定</label>
+          </div>
+        </div>
+      </div>
+      <div class="filter-field">
         <span class="filter-label">仕入先</span>
         <div class="multi-select" id="supplierDropdown">
           <button type="button" class="multi-select-trigger" id="supplierTrigger">自社、取引先、その他</button>
@@ -560,6 +571,17 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   <div id="researchTabView" hidden>
   <section class="panel" id="researchFilterPanel">
     <div class="filter-row">
+      <div class="filter-field">
+        <span class="filter-label">判定状況</span>
+        <div class="multi-select" id="judgmentDropdownR">
+          <button type="button" class="multi-select-trigger" id="judgmentTriggerR">見込アリ、確定</button>
+          <div class="multi-select-panel" id="judgmentPanelR" hidden>
+            <label class="multi-select-item"><input type="checkbox" value="売れ筋見込アリ" checked> 見込アリ</label>
+            <label class="multi-select-item"><input type="checkbox" value="売れ筋見込ナシ"> 見込ナシ</label>
+            <label class="multi-select-item"><input type="checkbox" value="売れ筋確定" checked> 確定</label>
+          </div>
+        </div>
+      </div>
       <label class="filter-field">
         <span class="filter-label">在庫状況</span>
         <select id="stockFilterSelectR">
@@ -1143,9 +1165,10 @@ function ordersInRange(start, end) {
   return result;
 }
 
-// ====== フィルター状態（期間・状況・仕入先・表示タイプ） ======
+// ====== フィルター状態（期間・状況・判定状況・仕入先・表示タイプ） ======
 let filterPeriodKey = "month";
 let filterStatusKey = "before_shipping";
+let filterJudgment = new Set(["売れ筋見込アリ", "売れ筋見込ナシ", "売れ筋確定"]);
 let filterSuppliers = new Set(["自社", "取引先", "その他"]);
 let customRangeStart = "";
 let customRangeEnd = "";
@@ -1166,32 +1189,46 @@ function statusMatchesFilter(status) {
   return statusMatches(status, filterStatusKey);
 }
 
-// 状況フィルター・仕入先フィルターを注文明細配列に適用する
+// 状況フィルター・判定状況フィルター・仕入先フィルターを注文明細配列に適用する
 function applyFilters(orders) {
   return orders.filter(
-    (o) => statusMatchesFilter(o["注文状況"] || "受注のみ") && filterSuppliers.has(supplierLabel(o["SKU"]))
+    (o) =>
+      statusMatchesFilter(o["注文状況"] || "受注のみ") &&
+      judgmentMatchesFilter(o["売れ筋判定"], filterJudgment) &&
+      filterSuppliers.has(supplierLabel(o["SKU"]))
   );
 }
 
-// ====== リサーチタブ用のフィルター状態（在庫状況・仕入先） ======
+// ====== リサーチタブ用のフィルター状態（判定状況・在庫状況・仕入先） ======
 // リサーチタブはstockdb全商品ベース（注文とは無関係）のため、注文日時・注文状況が無く
-// 「期間」「状況（注文の状況）」フィルターは成り立たない。代わりに在庫状況で絞り込む。
-// 一覧自体が「売れ筋アリ」の商品だけを対象にするため、売れ筋での絞り込みは不要（常にアリのみ）
+// 「期間」「状況（注文の状況）」フィルターは成り立たない。代わりに在庫状況で絞り込む
 let filterStockKeyR = "in_stock";
+let filterJudgmentR = new Set(["売れ筋見込アリ", "売れ筋確定"]);
 let filterSuppliersR = new Set(["自社", "取引先", "その他"]);
 
-// 売れ筋「アリ」とみなすための、トップカート価格が定価を上回る最低額
-const SALES_FLAG_THRESHOLD = 1000;
+// stockdb.売れ筋判定カラムの値（日次バッチ・再取得ボタンが書き込む）。プルダウンの選択肢
+const SALES_JUDGMENT_OPTIONS = ["売れ筋見込アリ", "売れ筋見込ナシ", "売れ筋確定"];
 
-// 商品の売れ筋（トップカート価格が定価よりSALES_FLAG_THRESHOLD円以上大きければ「アリ」、それ以外は「ナシ」。
-// 定価・トップカート価格のどちらかが無い商品はnull
-function salesFlagOf(o) {
-  if (o["定価"] == null || o["トップカート価格"] == null) return null;
-  return (o["トップカート価格"] - o["定価"]) >= SALES_FLAG_THRESHOLD ? "アリ" : "ナシ";
+// 判定状況フィルターの判定。judgmentがnull（まだ自動判定を通っていない商品）は、
+// 絞り込みをしていない状態（3つ全部選択中）の時だけ表示対象に含める
+function judgmentMatchesFilter(judgment, selectedSet) {
+  if (judgment == null) return selectedSet.size === SALES_JUDGMENT_OPTIONS.length;
+  return selectedSet.has(judgment);
 }
 
-// stockdb.売れ筋判定カラムの値（日次バッチが1日1回書き込む）。プルダウンの選択肢
-const SALES_JUDGMENT_OPTIONS = ["売れ筋見込アリ", "売れ筋見込ナシ", "売れ筋確定"];
+// 判定状況プルダウンのトリガー表示文字列を組み立てる（短い表記に変換する）
+const SALES_JUDGMENT_SHORT_LABELS = { "売れ筋見込アリ": "見込アリ", "売れ筋見込ナシ": "見込ナシ", "売れ筋確定": "確定" };
+function updateJudgmentTriggerLabel(triggerId, selectedSet) {
+  const trigger = document.getElementById(triggerId);
+  if (selectedSet.size === 0) trigger.textContent = "未選択";
+  else if (selectedSet.size === SALES_JUDGMENT_OPTIONS.length) trigger.textContent = "全て";
+  else {
+    trigger.textContent = SALES_JUDGMENT_OPTIONS
+      .filter((v) => selectedSet.has(v))
+      .map((v) => SALES_JUDGMENT_SHORT_LABELS[v])
+      .join("、");
+  }
+}
 
 // 売れ筋判定プルダウンのHTML片を作る。DB未反映(null)の場合は「売れ筋見込アリ」を仮表示する
 function salesJudgmentSelectHtml(jan, currentValue) {
@@ -1295,11 +1332,10 @@ function stockMatchesFilter(stock) {
   return true;
 }
 
-// リサーチタブの在庫状況・仕入先フィルターを商品明細配列に適用する。
-// 売れ筋「アリ」の商品だけを対象にする
+// リサーチタブの判定状況・在庫状況・仕入先フィルターを商品明細配列に適用する
 function applyFiltersR(products) {
   return products.filter((o) => {
-    if (salesFlagOf(o) !== "アリ") return false;
+    if (!judgmentMatchesFilter(o["売れ筋判定"], filterJudgmentR)) return false;
     if (!stockMatchesFilter(o["在庫数"])) return false;
     if (!productSupplierLabels(o).some((l) => filterSuppliersR.has(l))) return false;
     return true;
@@ -1374,14 +1410,14 @@ function renderForSelection() {
   renderOrderList(periodOrders, range ? `${range.start} 〜 ${range.end}` : "選択なし");
 }
 
-// リサーチタブ: 選択されている在庫状況・仕入先・売れ筋フィルターに応じてリサーチリストを再描画する
+// リサーチタブ: 選択されている判定状況・在庫状況・仕入先フィルターに応じてリサーチリストを再描画する
 // （stockdb全商品ベースのため、注文のような期間絞り込みは行わない）
 function renderForSelectionR() {
   const filtered = applyFiltersR(STOCKDB_LIST || []);
   renderResearchList(filtered, "stockdb全商品");
 }
 
-// 期間・状況・仕入先・表示タイプ・リセットの各コントロールを配線する
+// 期間・状況・判定状況・仕入先・表示タイプ・リセットの各コントロールを配線する
 function wireFilterControls() {
   document.getElementById("periodSelect").addEventListener("change", (e) => {
     filterPeriodKey = e.target.value;
@@ -1402,6 +1438,14 @@ function wireFilterControls() {
   });
 
   wireCheckboxDropdown({
+    dropdownId: "judgmentDropdown", triggerId: "judgmentTrigger", panelId: "judgmentPanel",
+    onChange: (checked) => {
+      filterJudgment = checked;
+      updateJudgmentTriggerLabel("judgmentTrigger", filterJudgment);
+      renderForSelection();
+    },
+  });
+  wireCheckboxDropdown({
     dropdownId: "supplierDropdown", triggerId: "supplierTrigger", panelId: "supplierPanel",
     onChange: (checked) => {
       filterSuppliers = checked;
@@ -1421,6 +1465,7 @@ function wireFilterControls() {
   document.getElementById("resetFilterButton").addEventListener("click", () => {
     filterPeriodKey = "month";
     filterStatusKey = "before_shipping";
+    filterJudgment = new Set(["売れ筋見込アリ", "売れ筋見込ナシ", "売れ筋確定"]);
     filterSuppliers = new Set(["自社", "取引先", "その他"]);
     customRangeStart = "";
     customRangeEnd = "";
@@ -1429,8 +1474,10 @@ function wireFilterControls() {
     document.getElementById("customRangeStart").value = "";
     document.getElementById("customRangeEnd").value = "";
     document.getElementById("statusFilterSelect").value = "before_shipping";
+    document.querySelectorAll("#judgmentPanel input").forEach((cb) => { cb.checked = true; });
     document.querySelectorAll("#supplierPanel input").forEach((cb) => { cb.checked = true; });
     document.querySelectorAll("#displayTypePanel input").forEach((cb) => { cb.checked = cb.value === "list"; });
+    updateJudgmentTriggerLabel("judgmentTrigger", filterJudgment);
     updateSupplierTriggerLabel();
     updateDisplayTypeTriggerLabel(new Set(["list"]));
     document.getElementById("orderListPanel").hidden = false;
@@ -1439,13 +1486,21 @@ function wireFilterControls() {
   });
 }
 
-// リサーチタブの在庫状況・仕入先・売れ筋・リセットの各コントロールを配線する
+// リサーチタブの判定状況・在庫状況・仕入先・再取得・リセットの各コントロールを配線する
 function wireResearchFilterControls() {
   document.getElementById("stockFilterSelectR").addEventListener("change", (e) => {
     filterStockKeyR = e.target.value;
     renderForSelectionR();
   });
 
+  wireCheckboxDropdown({
+    dropdownId: "judgmentDropdownR", triggerId: "judgmentTriggerR", panelId: "judgmentPanelR",
+    onChange: (checked) => {
+      filterJudgmentR = checked;
+      updateJudgmentTriggerLabel("judgmentTriggerR", filterJudgmentR);
+      renderForSelectionR();
+    },
+  });
   wireCheckboxDropdown({
     dropdownId: "supplierDropdownR", triggerId: "supplierTriggerR", panelId: "supplierPanelR",
     onChange: (checked) => {
@@ -1456,9 +1511,12 @@ function wireResearchFilterControls() {
   });
   document.getElementById("resetFilterButtonR").addEventListener("click", () => {
     filterStockKeyR = "in_stock";
+    filterJudgmentR = new Set(["売れ筋見込アリ", "売れ筋確定"]);
     filterSuppliersR = new Set(["自社", "取引先", "その他"]);
     document.getElementById("stockFilterSelectR").value = "in_stock";
+    document.querySelectorAll("#judgmentPanelR input").forEach((cb) => { cb.checked = cb.value !== "売れ筋見込ナシ"; });
     document.querySelectorAll("#supplierPanelR input").forEach((cb) => { cb.checked = true; });
+    updateJudgmentTriggerLabel("judgmentTriggerR", filterJudgmentR);
     updateTriggerLabel("supplierTriggerR", filterSuppliersR, ["自社", "取引先", "その他"]);
     renderForSelectionR();
   });
@@ -1826,7 +1884,7 @@ async function showDashboard() {
     // （新規注文の有無に関わらず、チェックに行くたびに記録されている値）
     await renderLastChecked();
 
-    // 初期表示は期間:月、状況:発送前、仕入先:すべて、表示タイプ:注文リスト
+    // 初期表示は期間:月、状況:発送前、判定状況:全て、仕入先:すべて、表示タイプ:注文リスト
     // （filterPeriodKey等の既定値、およびHTML側のチェック済み状態と一致させている）
     renderForSelection();
     renderForSelectionR();

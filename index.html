@@ -1201,30 +1201,12 @@ function salesJudgmentSelectHtml(jan, currentValue) {
   return `<select class="status-select sales-judgment-select" data-jan="${jan ?? ""}" data-prev="${value}">${options}</select>`;
 }
 
-// 売れ筋判定プルダウンの変更を処理する。「売れ筋確定」への変更のみDBに書き込む
-// （見込アリ/見込ナシは日次バッチが自動判定するため、手動では戻せない仕様）
-async function handleSalesJudgmentChange(select) {
-  const jan = select.dataset.jan;
-  const newValue = select.value;
+// 指定RPCを呼び、成功したら画面上の該当JANの表示値も更新する（同じJANを持つ全ての行）
+async function callSalesJudgmentRpc(select, rpcName, jan, displayValueOnSuccess) {
   const previousValue = select.dataset.prev;
-
-  if (newValue !== "売れ筋確定") {
-    select.value = previousValue;
-    return;
-  }
-  if (!jan) {
-    alert("JANが取得できないため確定できません");
-    select.value = previousValue;
-    return;
-  }
-  if (!window.confirm("この商品を「売れ筋確定」にします。よろしいですか？")) {
-    select.value = previousValue;
-    return;
-  }
-
   select.disabled = true;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/confirm_sales_judgment`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${rpcName}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1237,22 +1219,61 @@ async function handleSalesJudgmentChange(select) {
       throw new Error(await res.text());
     }
 
-    // 画面上のデータにも反映する（同じJANを持つ全ての行を更新）
     for (const months of Object.values(ORDER_LIST)) {
       for (const o of months) {
-        if (o["JAN"] === jan) o["売れ筋判定"] = "売れ筋確定";
+        if (o["JAN"] === jan) o["売れ筋判定"] = displayValueOnSuccess;
       }
     }
     for (const o of STOCKDB_LIST || []) {
-      if (o["JAN"] === jan) o["売れ筋判定"] = "売れ筋確定";
+      if (o["JAN"] === jan) o["売れ筋判定"] = displayValueOnSuccess;
     }
-    select.dataset.prev = "売れ筋確定";
+    select.dataset.prev = displayValueOnSuccess;
+    select.value = displayValueOnSuccess;
   } catch (err) {
     alert("更新に失敗しました: " + err.message);
     select.value = previousValue;
   } finally {
     select.disabled = false;
   }
+}
+
+// 売れ筋判定プルダウンの変更を処理する。
+// 「売れ筋確定」への変更はDBに書き込む。確定済みから見込アリ/ナシへ変更した場合は
+// 確定を解除する（解除後の正式な判定値は次回の日次自動判定で確定する。選んだ値は
+// 解除までの仮表示）。確定でない状態での見込アリ⇔見込ナシの変更は手動では行えない
+// （自動判定のみが管理するため）
+async function handleSalesJudgmentChange(select) {
+  const jan = select.dataset.jan;
+  const newValue = select.value;
+  const previousValue = select.dataset.prev;
+  if (newValue === previousValue) return;
+
+  if (!jan) {
+    alert("JANが取得できないため変更できません");
+    select.value = previousValue;
+    return;
+  }
+
+  if (newValue === "売れ筋確定") {
+    if (!window.confirm("この商品を「売れ筋確定」にします。よろしいですか？")) {
+      select.value = previousValue;
+      return;
+    }
+    await callSalesJudgmentRpc(select, "confirm_sales_judgment", jan, "売れ筋確定");
+    return;
+  }
+
+  if (previousValue === "売れ筋確定") {
+    if (!window.confirm("「売れ筋確定」を解除します。よろしいですか？（正式な判定値は次回の自動判定で確定します）")) {
+      select.value = previousValue;
+      return;
+    }
+    await callSalesJudgmentRpc(select, "unconfirm_sales_judgment", jan, newValue);
+    return;
+  }
+
+  // 確定していない状態での見込アリ⇔見込ナシの変更はDBに反映しない
+  select.value = previousValue;
 }
 
 // stockdbの商品行（SKU_自社/SKU_tcの有無）から、該当する仕入先ラベルの集合を返す

@@ -13,7 +13,6 @@ import shutil
 import subprocess
 import psycopg2
 from datetime import date
-from psycopg2.extras import execute_values
 from PIL import Image
 
 SITE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -116,39 +115,18 @@ def mark_sales_judgment_done():
 
 
 # リサーチタブと同じ基準（トップカート価格-定価が閾値以上）でstockdb.売れ筋判定を更新する。
-# 手動で「売れ筋確定」にされたJANは自動判定で上書きしない
+# 手動で「売れ筋確定」にされたJANは自動判定で上書きしない。
+# 実体はDB側のrun_sales_judgment() SQL関数（リサーチタブの「再取得」ボタンからも
+# 同じ関数を呼んでいるため、判定基準をここと二重管理しないようにしている）
 def run_sales_judgment():
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
-
-    cur.execute('SELECT "JAN", "トップカート価格", "定価" FROM "stockdb_リサーチ_表示用" WHERE "JAN" IS NOT NULL')
-    research_rows = cur.fetchall()
-
-    cur.execute('SELECT "JAN" FROM "stockdb" WHERE "売れ筋判定" = %s', ("売れ筋確定",))
-    confirmed_jans = {r[0] for r in cur.fetchall()}
-
-    updates = []
-    for jan, top_cart_price, list_price in research_rows:
-        if jan in confirmed_jans:
-            continue
-        is_hot = (
-            top_cart_price is not None and list_price is not None
-            and (top_cart_price - list_price) >= RESEARCH_SALES_FLAG_THRESHOLD
-        )
-        updates.append((jan, "売れ筋見込アリ" if is_hot else "売れ筋見込ナシ"))
-
-    if updates:
-        execute_values(
-            cur,
-            'UPDATE "stockdb" AS s SET "売れ筋判定" = v.verdict '
-            'FROM (VALUES %s) AS v (jan, verdict) WHERE s."JAN" = v.jan',
-            updates,
-        )
-        conn.commit()
-
+    cur.execute("SELECT public.run_sales_judgment()")
+    updated = cur.fetchone()[0]
+    conn.commit()
     cur.close()
     conn.close()
-    return len(updates)
+    return updated
 
 
 # SKUに埋め込まれた13桁のJANを取り出す（stockdb紐付けと同じルール）

@@ -579,6 +579,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           </div>
         </div>
       </div>
+      <button type="button" class="detail-button" id="refetchJudgmentButtonR">再取得</button>
       <button type="button" class="detail-button" id="resetFilterButtonR">リセット</button>
     </div>
   </section>
@@ -1460,6 +1461,39 @@ function wireResearchFilterControls() {
     document.querySelectorAll("#supplierPanelR input").forEach((cb) => { cb.checked = true; });
     updateTriggerLabel("supplierTriggerR", filterSuppliersR, ["自社", "取引先", "その他"]);
     renderForSelectionR();
+  });
+
+  document.getElementById("refetchJudgmentButtonR").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    if (!window.confirm("売れ筋判定を今すぐ再取得します。よろしいですか？（確定済みの商品は変更されません）")) return;
+
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = "再取得中…";
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/run_sales_judgment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: "{}",
+      });
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const updatedCount = await res.json();
+
+      STOCKDB_LIST = buildStockdbList(await fetchAllResearchRows());
+      renderForSelectionR();
+      alert(`売れ筋判定を再取得しました（更新件数: ${updatedCount}件）`);
+    } catch (err) {
+      alert("再取得に失敗しました: " + err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
   });
 }
 

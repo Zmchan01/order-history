@@ -704,6 +704,7 @@ function showResearchDetailModal(o) {
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
     <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${stockBreakdownText(o)}</dd>
     <dt>利益/ランキング</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"} / ${o["ランキング"] ?? "-"}</dd>
+    <dt>ASIN</dt><dd>${o["ASIN"] ?? "-"}</dd>
   `;
   document.getElementById("detailModal").hidden = false;
 }
@@ -1636,6 +1637,7 @@ function buildStockdbList(rows) {
     "メーカー名": r["メーカー名"],
     "在庫数_自社": r["在庫数_自社"] != null ? Number(r["在庫数_自社"]) : 0,
     "在庫数_tc": r["在庫数_tc"] != null ? Number(r["在庫数_tc"]) : 0,
+    "ASIN": r["ASIN"],
   }));
 }
 

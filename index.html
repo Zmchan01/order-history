@@ -531,6 +531,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
             <th>商品名/JAN</th>
             <th>販売価格/卸値</th>
             <th>仕入先/数量</th>
+            <th>売れ筋判定</th>
           </tr>
         </thead>
         <tbody id="orderListBody"></tbody>
@@ -595,7 +596,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
             <th>ランキング</th>
             <th>トップカート価格/定価</th>
             <th>利益</th>
-            <th>売れ筋</th>
+            <th>売れ筋判定</th>
           </tr>
         </thead>
         <tbody id="researchListBody"></tbody>
@@ -723,8 +724,8 @@ function findStockdbByJan(jan) {
 
 function wireTruncateClicks() {
   document.getElementById("orderListBody").addEventListener("click", (e) => {
-    // 状況プルダウンのクリックはポップアップを開かない
-    if (e.target.closest(".status-select")) return;
+    // プルダウン（状況・売れ筋判定）のクリックはポップアップを開かない
+    if (e.target.closest("select")) return;
     const row = e.target.closest(".row-clickable");
     if (!row) return;
     const o = findOrderByUid(Number(row.dataset.id));
@@ -745,6 +746,8 @@ function wireTruncateClicks() {
   });
 
   document.getElementById("researchListBody").addEventListener("click", (e) => {
+    // 売れ筋判定プルダウンのクリックはポップアップを開かない
+    if (e.target.closest("select")) return;
     const row = e.target.closest(".row-clickable");
     if (!row) return;
     const o = findStockdbByJan(row.dataset.jan);
@@ -753,6 +756,10 @@ function wireTruncateClicks() {
   document.getElementById("researchListMoreButton").addEventListener("click", () => {
     researchListVisibleCount += RESEARCH_LIST_PAGE_SIZE;
     renderResearchListBody();
+  });
+  document.getElementById("researchListBody").addEventListener("change", async (e) => {
+    const judgmentSelect = e.target.closest(".sales-judgment-select");
+    if (judgmentSelect) await handleSalesJudgmentChange(judgmentSelect);
   });
 }
 
@@ -826,9 +833,10 @@ function renderOrderListBody() {
       <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
       <td>${formatYen(o["販売価格"])}<br><span class="sub-line">${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</span></td>
       <td>${supplierLabel(o["SKU"])}<br><span class="sub-line">${o["数量"] ?? ""}</span></td>
+      <td class="cell-flag">${salesJudgmentSelectHtml(o["JAN"], o["売れ筋判定"])}</td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="5">この期間の注文はありません</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="6">この期間の注文はありません</td></tr>`;
 
   const moreButton = document.getElementById("orderListMoreButton");
   const remaining = list.length - orderListVisibleCount;
@@ -873,14 +881,12 @@ function renderResearchListBody() {
   const visible = list.slice(0, researchListVisibleCount);
   let rows = "";
   for (const o of visible) {
-    const flag = salesFlagOf(o);
-    const flagClass = flag === "アリ" ? "sales-flag-ari" : flag === "ナシ" ? "sales-flag-nashi" : "";
     rows += `<tr class="row-clickable" data-jan="${o["JAN"] ?? ""}">
       <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
       <td>${o["ランキング"] ?? "-"}</td>
       <td>${o["トップカート価格"] != null ? formatYen(o["トップカート価格"]) : "-"}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>
       <td>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</td>
-      <td class="${flagClass}">${flag ?? "-"}</td>
+      <td class="cell-flag">${salesJudgmentSelectHtml(o["JAN"], o["売れ筋判定"])}</td>
     </tr>`;
   }
   tbody.innerHTML = rows || `<tr><td colspan="5">該当する商品はありません</td></tr>`;
@@ -1183,6 +1189,72 @@ function salesFlagOf(o) {
   return (o["トップカート価格"] - o["定価"]) >= SALES_FLAG_THRESHOLD ? "アリ" : "ナシ";
 }
 
+// stockdb.売れ筋判定カラムの値（日次バッチが1日1回書き込む）。プルダウンの選択肢
+const SALES_JUDGMENT_OPTIONS = ["売れ筋見込アリ", "売れ筋見込ナシ", "売れ筋確定"];
+
+// 売れ筋判定プルダウンのHTML片を作る。DB未反映(null)の場合は「売れ筋見込アリ」を仮表示する
+function salesJudgmentSelectHtml(jan, currentValue) {
+  const value = SALES_JUDGMENT_OPTIONS.includes(currentValue) ? currentValue : "売れ筋見込アリ";
+  const options = SALES_JUDGMENT_OPTIONS
+    .map((v) => `<option value="${v}" ${v === value ? "selected" : ""}>${v}</option>`)
+    .join("");
+  return `<select class="status-select sales-judgment-select" data-jan="${jan ?? ""}" data-prev="${value}">${options}</select>`;
+}
+
+// 売れ筋判定プルダウンの変更を処理する。「売れ筋確定」への変更のみDBに書き込む
+// （見込アリ/見込ナシは日次バッチが自動判定するため、手動では戻せない仕様）
+async function handleSalesJudgmentChange(select) {
+  const jan = select.dataset.jan;
+  const newValue = select.value;
+  const previousValue = select.dataset.prev;
+
+  if (newValue !== "売れ筋確定") {
+    select.value = previousValue;
+    return;
+  }
+  if (!jan) {
+    alert("JANが取得できないため確定できません");
+    select.value = previousValue;
+    return;
+  }
+  if (!window.confirm("この商品を「売れ筋確定」にします。よろしいですか？")) {
+    select.value = previousValue;
+    return;
+  }
+
+  select.disabled = true;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/confirm_sales_judgment`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ p_jan: jan }),
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+
+    // 画面上のデータにも反映する（同じJANを持つ全ての行を更新）
+    for (const months of Object.values(ORDER_LIST)) {
+      for (const o of months) {
+        if (o["JAN"] === jan) o["売れ筋判定"] = "売れ筋確定";
+      }
+    }
+    for (const o of STOCKDB_LIST || []) {
+      if (o["JAN"] === jan) o["売れ筋判定"] = "売れ筋確定";
+    }
+    select.dataset.prev = "売れ筋確定";
+  } catch (err) {
+    alert("更新に失敗しました: " + err.message);
+    select.value = previousValue;
+  } finally {
+    select.disabled = false;
+  }
+}
+
 // stockdbの商品行（SKU_自社/SKU_tcの有無）から、該当する仕入先ラベルの集合を返す
 // （1商品が自社・取引先どちらにも出品されている場合は両方に属する）
 function productSupplierLabels(o) {
@@ -1435,6 +1507,12 @@ function updateTriggerLabel(triggerId, selectedSet, allValues) {
 // 注文状況のプルダウンが変更されたら、確認ダイアログを出してからSupabaseへ反映する
 function wireStatusSelects() {
   document.getElementById("orderListBody").addEventListener("change", async (e) => {
+    const judgmentSelect = e.target.closest(".sales-judgment-select");
+    if (judgmentSelect) {
+      await handleSalesJudgmentChange(judgmentSelect);
+      return;
+    }
+
     const select = e.target.closest(".status-select");
     if (!select) return;
 
@@ -1614,6 +1692,7 @@ function buildOrderListByMonth(rows) {
       "出荷日時": r["出荷日時"],
       "注文状況": r["注文状況"],
       "ランキング": r["ランキング"] != null ? Number(r["ランキング"]) : null,
+      "売れ筋判定": r["売れ筋判定"],
     });
   }
   return byMonth;
@@ -1638,13 +1717,14 @@ function buildStockdbList(rows) {
     "在庫数_自社": r["在庫数_自社"] != null ? Number(r["在庫数_自社"]) : 0,
     "在庫数_tc": r["在庫数_tc"] != null ? Number(r["在庫数_tc"]) : 0,
     "ASIN": r["ASIN"],
+    "売れ筋判定": r["売れ筋判定"],
   }));
 }
 
 // 在庫数を「合計(内訳: TC X件 / 自社 Y件)」の形で表示する文字列を作る
 function stockBreakdownText(o) {
   const total = o["在庫数"] ?? 0;
-  return `${total}(内訳: TC ${o["在庫数_tc"] ?? 0}件 / 自社 ${o["在庫数_自社"] ?? 0}件)`;
+  return `${total} (内訳: TC ${o["在庫数_tc"] ?? 0}件 / 自社 ${o["在庫数_自社"] ?? 0}件)`;
 }
 
 // 「システム状態」テーブルから、GASがGmailを最後にチェックした時刻を取得して表示する

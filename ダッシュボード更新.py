@@ -12,6 +12,8 @@ import re
 import shutil
 import subprocess
 import psycopg2
+from datetime import date
+from psycopg2.extras import execute_values
 from PIL import Image
 
 SITE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +41,10 @@ IMAGE_SEARCH_PATHS = [
     lambda jan: os.path.join(r"D:\他サイト商品画像\ハピネットオンライン", f"{jan}.jpg"),
 ]
 
+# Amazonランキング情報.pyがASIN名で保存している画像フォルダ
+# （リサーチタブの商品はJAN名の画像が無いことが多いため、ASIN経由でも探す）
+AMAZON_RANKING_IMAGE_DIR = r"D:\Amazonランキング画像"
+
 
 # 画像コピー対象を探すため、注文履歴にある全SKUだけを取得する
 def fetch_all_skus():
@@ -49,6 +55,100 @@ def fetch_all_skus():
     cur.close()
     conn.close()
     return rows
+
+
+# リサーチタブに表示される商品（売れ筋アリ=トップカート価格が定価より1000円以上高い）の
+# JANを取得する。注文とは無関係のため、こちらは別途取得・同期する
+RESEARCH_SALES_FLAG_THRESHOLD = 1000
+
+
+def fetch_research_jans():
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    cur.execute(
+        'SELECT "JAN" FROM "stockdb_リサーチ_表示用" '
+        'WHERE ("トップカート価格" - "定価") >= %s',
+        (RESEARCH_SALES_FLAG_THRESHOLD,)
+    )
+    rows = [r[0] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return rows
+
+
+# 指定したJAN群に対応するASIN（Amazon情報テーブル）を取得する。
+# 1つのJANに複数ASINがある場合は先に見つかった1件を使う
+def fetch_jan_to_asin(jans):
+    if not jans:
+        return {}
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    cur.execute(
+        'SELECT "JAN", "ASIN" FROM "Amazon情報" WHERE "JAN" = ANY(%s) AND "ASIN" IS NOT NULL',
+        (jans,)
+    )
+    jan_to_asin = {}
+    for jan, asin in cur.fetchall():
+        jan_to_asin.setdefault(jan, asin)
+    cur.close()
+    conn.close()
+    return jan_to_asin
+
+
+# この更新スクリプトはタスクスケジューラから30分おきに実行されるが、
+# 売れ筋判定は1日1回（日付が変わった後の最初の1回）だけ実行したいため、
+# 最後に実行した日付をローカルファイルに記録して判定する
+SALES_JUDGMENT_MARKER_PATH = os.path.join(SITE_DIR, "売れ筋判定_最終実行日.txt")
+
+
+def should_run_sales_judgment():
+    today = date.today().isoformat()
+    if os.path.exists(SALES_JUDGMENT_MARKER_PATH):
+        with open(SALES_JUDGMENT_MARKER_PATH, encoding="utf-8") as f:
+            if f.read().strip() == today:
+                return False
+    return True
+
+
+def mark_sales_judgment_done():
+    with open(SALES_JUDGMENT_MARKER_PATH, "w", encoding="utf-8") as f:
+        f.write(date.today().isoformat())
+
+
+# リサーチタブと同じ基準（トップカート価格-定価が閾値以上）でstockdb.売れ筋判定を更新する。
+# 手動で「売れ筋確定」にされたJANは自動判定で上書きしない
+def run_sales_judgment():
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+
+    cur.execute('SELECT "JAN", "トップカート価格", "定価" FROM "stockdb_リサーチ_表示用" WHERE "JAN" IS NOT NULL')
+    research_rows = cur.fetchall()
+
+    cur.execute('SELECT "JAN" FROM "stockdb" WHERE "売れ筋判定" = %s', ("売れ筋確定",))
+    confirmed_jans = {r[0] for r in cur.fetchall()}
+
+    updates = []
+    for jan, top_cart_price, list_price in research_rows:
+        if jan in confirmed_jans:
+            continue
+        is_hot = (
+            top_cart_price is not None and list_price is not None
+            and (top_cart_price - list_price) >= RESEARCH_SALES_FLAG_THRESHOLD
+        )
+        updates.append((jan, "売れ筋見込アリ" if is_hot else "売れ筋見込ナシ"))
+
+    if updates:
+        execute_values(
+            cur,
+            'UPDATE "stockdb" AS s SET "売れ筋判定" = v.verdict '
+            'FROM (VALUES %s) AS v (jan, verdict) WHERE s."JAN" = v.jan',
+            updates,
+        )
+        conn.commit()
+
+    cur.close()
+    conn.close()
+    return len(updates)
 
 
 # SKUに埋め込まれた13桁のJANを取り出す（stockdb紐付けと同じルール）
@@ -78,16 +178,20 @@ def resize_if_needed(path):
 
 
 # JANから商品画像を検索し、見つかればimages/フォルダへコピーする
-# （既にコピー済みならスキップ。戻り値は新たにコピーしたかどうか）
-def resolve_and_copy_image(jan):
+# （既にコピー済みならスキップ。戻り値は新たにコピーしたかどうか）。
+# asinを渡すと、Amazonランキング情報.pyがASIN名で保存した画像も検索先に加える
+def resolve_and_copy_image(jan, asin=None):
     if not jan:
         return False
     dest_abs = os.path.join(IMAGES_DIR, f"{jan}.jpg")
     if os.path.exists(dest_abs):
         return False
 
-    for path_fn in IMAGE_SEARCH_PATHS:
-        src = path_fn(jan)
+    candidates = [path_fn(jan) for path_fn in IMAGE_SEARCH_PATHS]
+    if asin:
+        candidates.append(os.path.join(AMAZON_RANKING_IMAGE_DIR, f"{asin}.jpg"))
+
+    for src in candidates:
         if os.path.exists(src):
             os.makedirs(IMAGES_DIR, exist_ok=True)
             shutil.copyfile(src, dest_abs)
@@ -124,6 +228,11 @@ def git_commit_and_push():
 
 
 def main():
+    if should_run_sales_judgment():
+        updated = run_sales_judgment()
+        print(f"売れ筋判定を更新しました: {updated}件")
+        mark_sales_judgment_done()
+
     skus = fetch_all_skus()
     print(f"対象SKU件数: {len(skus)}")
 
@@ -132,7 +241,18 @@ def main():
         jan = extract_jan(sku)
         if resolve_and_copy_image(jan):
             copied += 1
-    print(f"新たにコピーした画像件数: {copied}")
+    print(f"新たにコピーした画像件数(注文): {copied}")
+
+    # リサーチタブに表示される商品（注文とは無関係）の画像も同期する
+    research_jans = fetch_research_jans()
+    jan_to_asin = fetch_jan_to_asin(research_jans)
+    print(f"対象JAN件数(リサーチ): {len(research_jans)}")
+
+    research_copied = 0
+    for jan in research_jans:
+        if resolve_and_copy_image(jan, asin=jan_to_asin.get(jan)):
+            research_copied += 1
+    print(f"新たにコピーした画像件数(リサーチ): {research_copied}")
 
     git_commit_and_push()
 

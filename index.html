@@ -617,7 +617,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           <tr>
             <th>商品名/JAN</th>
             <th>ランキング</th>
-            <th>トップカート価格/定価</th>
+            <th>新品最安値/定価</th>
             <th>利益</th>
             <th>売れ筋判定</th>
           </tr>
@@ -650,7 +650,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 let DATA = null;
 // サイト別・月別の注文明細一覧（キー=YYYY-MM）。卸値はstockdbとJANで紐付け済み
 let ORDER_LIST = null;
-// リサーチタブ用: stockdb全商品（Amazon商品ページから取得したトップカート価格・ランキング付き）の一覧
+// リサーチタブ用: stockdb全商品（Amazon商品ページから取得した新品最安値・ランキング付き）の一覧
 let STOCKDB_LIST = null;
 
 // 注文状況の更新（update_order_statusというRPC関数しか呼べない権限のanonキー）
@@ -719,13 +719,12 @@ function showResearchDetailModal(o) {
     img.hidden = true;
   }
 
-  // 指定された並び（メーカー名/JANコード、トップカート価格/卸値、送料/配送サイズ、
+  // 指定された並び（メーカー名/JANコード、新品最安値/卸値、送料/配送サイズ、
   // 仕入先/在庫数、利益/ランキング）で表示する
-  // トップカート価格が無い商品は、代わりに新品_最小価格を表示する
-  const price = o["トップカート価格"] ?? o["新品_最小価格"];
+  const price = o["新品_最安値"];
   document.getElementById("modalContent").innerHTML = `
     <dt>メーカー名/JANコード</dt><dd>${o["メーカー名"] ?? "-"} / ${o["JAN"] ?? ""}</dd>
-    <dt>トップカート価格/卸値</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
+    <dt>新品最安値/卸値</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
     <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${stockBreakdownText(o)}</dd>
     <dt>利益/ランキング</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"} / ${o["ランキング"] ?? "-"}</dd>
@@ -908,7 +907,7 @@ function renderResearchListBody() {
     rows += `<tr class="row-clickable" data-jan="${o["JAN"] ?? ""}">
       <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
       <td>${o["ランキング"] ?? "-"}</td>
-      <td>${o["トップカート価格"] != null ? formatYen(o["トップカート価格"]) : "-"}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>
+      <td>${o["新品_最安値"] != null ? formatYen(o["新品_最安値"]) : "-"}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>
       <td>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</td>
       <td class="cell-flag">${salesJudgmentSelectHtml(o["JAN"], o["売れ筋判定"])}</td>
     </tr>`;
@@ -1820,8 +1819,7 @@ function buildStockdbList(rows) {
     "SKU_自社": r["SKU_自社"],
     "SKU_tc": r["SKU_tc"],
     "在庫数": r["在庫数"] != null ? Number(r["在庫数"]) : null,
-    "トップカート価格": r["トップカート価格"] != null ? Number(r["トップカート価格"]) : null,
-    "新品_最小価格": r["新品_最小価格"] != null ? Number(r["新品_最小価格"]) : null,
+    "新品_最安値": r["新品_最安値"] != null ? Number(r["新品_最安値"]) : null,
     "ランキング": r["ランキング"] != null ? Number(r["ランキング"]) : null,
     "定価": r["定価"] != null ? Number(r["定価"]) : null,
     "利益": r["利益"] != null ? Number(r["利益"]) : null,

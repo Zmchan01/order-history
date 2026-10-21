@@ -617,7 +617,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           <tr>
             <th>商品名/JAN</th>
             <th>ランキング</th>
-            <th>売れ筋価格</th>
+            <th>売れ筋割合</th>
             <th>売れ筋判定</th>
           </tr>
         </thead>
@@ -876,7 +876,7 @@ let currentResearchList = [];
 let currentResearchLabel = "";
 let researchListVisibleCount = RESEARCH_LIST_PAGE_SIZE;
 
-// 売れ筋価格（新品最安値/定価）を数値で返す。算出できない場合はnull
+// 売れ筋割合（新品最安値/定価）を数値で返す。算出できない場合はnull
 function salesPriceRatio(o) {
   const price = o["新品_最安値"];
   const list = o["定価"];
@@ -885,7 +885,7 @@ function salesPriceRatio(o) {
 }
 
 // ランキングが良い（数字が小さい）順を優先し、同ランキングの場合は
-// 売れ筋価格が大きい順に並べる。ランキング無しは末尾にする
+// 売れ筋割合が大きい順に並べる。ランキング無しは末尾にする
 function sortResearchRows(list) {
   return list.slice().sort((a, b) => {
     const ra = a["ランキング"], rb = b["ランキング"];
@@ -907,7 +907,7 @@ function sortResearchRows(list) {
   });
 }
 
-// 売れ筋価格を小数で表す（1.09、0.89など。高いほど定価に近い＝割引が薄い）
+// 売れ筋割合を小数で表す（1.09、0.89など。高いほど定価に近い＝割引が薄い）
 function salesPriceRatioText(o) {
   const ratio = salesPriceRatio(o);
   return ratio == null ? "-" : ratio.toFixed(2);

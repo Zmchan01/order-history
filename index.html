@@ -721,7 +721,8 @@ function showResearchDetailModal(o) {
 
   // 指定された並び（メーカー名/JANコード、トップカート価格/卸値、送料/配送サイズ、
   // 仕入先/在庫数、利益/ランキング）で表示する
-  const price = o["トップカート価格"];
+  // トップカート価格が無い商品は、代わりに新品_最小価格を表示する
+  const price = o["トップカート価格"] ?? o["新品_最小価格"];
   document.getElementById("modalContent").innerHTML = `
     <dt>メーカー名/JANコード</dt><dd>${o["メーカー名"] ?? "-"} / ${o["JAN"] ?? ""}</dd>
     <dt>トップカート価格/卸値</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
@@ -1820,6 +1821,7 @@ function buildStockdbList(rows) {
     "SKU_tc": r["SKU_tc"],
     "在庫数": r["在庫数"] != null ? Number(r["在庫数"]) : null,
     "トップカート価格": r["トップカート価格"] != null ? Number(r["トップカート価格"]) : null,
+    "新品_最小価格": r["新品_最小価格"] != null ? Number(r["新品_最小価格"]) : null,
     "ランキング": r["ランキング"] != null ? Number(r["ランキング"]) : null,
     "定価": r["定価"] != null ? Number(r["定価"]) : null,
     "利益": r["利益"] != null ? Number(r["利益"]) : null,

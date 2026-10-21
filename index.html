@@ -876,23 +876,41 @@ let currentResearchList = [];
 let currentResearchLabel = "";
 let researchListVisibleCount = RESEARCH_LIST_PAGE_SIZE;
 
-// ランキングが良い（数字が小さい）順に並べる。ランキング無しは末尾にする
+// 売れ筋価格（新品最安値/定価）を数値で返す。算出できない場合はnull
+function salesPriceRatio(o) {
+  const price = o["新品_最安値"];
+  const list = o["定価"];
+  if (price == null || list == null || list === 0) return null;
+  return price / list;
+}
+
+// ランキングが良い（数字が小さい）順を優先し、同ランキングの場合は
+// 売れ筋価格が大きい順に並べる。ランキング無しは末尾にする
 function sortResearchRows(list) {
   return list.slice().sort((a, b) => {
     const ra = a["ランキング"], rb = b["ランキング"];
-    if (ra == null && rb == null) return 0;
+    if (ra == null && rb == null) {
+      const pa = salesPriceRatio(a), pb = salesPriceRatio(b);
+      if (pa == null && pb == null) return 0;
+      if (pa == null) return 1;
+      if (pb == null) return -1;
+      return pb - pa;
+    }
     if (ra == null) return 1;
     if (rb == null) return -1;
-    return ra - rb;
+    if (ra !== rb) return ra - rb;
+    const pa = salesPriceRatio(a), pb = salesPriceRatio(b);
+    if (pa == null && pb == null) return 0;
+    if (pa == null) return 1;
+    if (pb == null) return -1;
+    return pb - pa;
   });
 }
 
-// 売れ筋価格 = 新品最安値 / 定価 を小数で表す（1.09、0.89など。高いほど定価に近い＝割引が薄い）
+// 売れ筋価格を小数で表す（1.09、0.89など。高いほど定価に近い＝割引が薄い）
 function salesPriceRatioText(o) {
-  const price = o["新品_最安値"];
-  const list = o["定価"];
-  if (price == null || list == null || list === 0) return "-";
-  return (price / list).toFixed(2);
+  const ratio = salesPriceRatio(o);
+  return ratio == null ? "-" : ratio.toFixed(2);
 }
 
 function renderResearchList(products, label) {

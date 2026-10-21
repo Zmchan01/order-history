@@ -887,12 +887,12 @@ function sortResearchRows(list) {
   });
 }
 
-// 売れ筋価格 = 新品最安値 / 定価 をパーセントで表す（高いほど定価に近い＝割引が薄い）
+// 売れ筋価格 = 新品最安値 / 定価 を小数で表す（1.09、0.89など。高いほど定価に近い＝割引が薄い）
 function salesPriceRatioText(o) {
   const price = o["新品_最安値"];
   const list = o["定価"];
   if (price == null || list == null || list === 0) return "-";
-  return `${Math.round((price / list) * 100)}%`;
+  return (price / list).toFixed(2);
 }
 
 function renderResearchList(products, label) {

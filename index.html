@@ -617,8 +617,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
           <tr>
             <th>商品名/JAN</th>
             <th>ランキング</th>
-            <th>新品最安値/定価</th>
-            <th>利益</th>
+            <th>売れ筋価格</th>
             <th>売れ筋判定</th>
           </tr>
         </thead>
@@ -888,6 +887,14 @@ function sortResearchRows(list) {
   });
 }
 
+// 売れ筋価格 = 新品最安値 / 定価 をパーセントで表す（高いほど定価に近い＝割引が薄い）
+function salesPriceRatioText(o) {
+  const price = o["新品_最安値"];
+  const list = o["定価"];
+  if (price == null || list == null || list === 0) return "-";
+  return `${Math.round((price / list) * 100)}%`;
+}
+
 function renderResearchList(products, label) {
   currentResearchList = sortResearchRows(products);
   currentResearchLabel = label;
@@ -907,12 +914,11 @@ function renderResearchListBody() {
     rows += `<tr class="row-clickable" data-jan="${o["JAN"] ?? ""}">
       <td class="cell-wrap">${truncate(o["商品名"], 15)}<br><span class="sub-line">${o["JAN"] ?? ""}</span></td>
       <td>${o["ランキング"] ?? "-"}</td>
-      <td>${o["新品_最安値"] != null ? formatYen(o["新品_最安値"]) : "-"}<br><span class="sub-line">${o["定価"] != null ? formatYen(o["定価"]) : "-"}</span></td>
-      <td>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</td>
+      <td>${salesPriceRatioText(o)}</td>
       <td class="cell-flag">${salesJudgmentSelectHtml(o["JAN"], o["売れ筋判定"])}</td>
     </tr>`;
   }
-  tbody.innerHTML = rows || `<tr><td colspan="5">該当する商品はありません</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="4">該当する商品はありません</td></tr>`;
 
   const moreButton = document.getElementById("researchListMoreButton");
   const remaining = list.length - researchListVisibleCount;

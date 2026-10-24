@@ -1900,10 +1900,12 @@ async function showDashboard() {
     DATA = buildMonthlyData(rows);
     ORDER_LIST = buildOrderListByMonth(rows);
 
-    // リサーチの売れ筋判定・利益を再取得する（1日1回しか実際には再計算しないよう
-    // DB側でガードされているため、毎回の読み込みで呼んでも通常は数百ms程度で済む）
+    // リサーチの売れ筋判定・利益を再取得する（run_sales_judgment_if_neededは
+    // 1日1回しか実際には再計算しないようDB側でガードされているため、
+    // 毎回の読み込みで呼んでも通常は数百ms程度で済む。再取得ボタンはこの
+    // ガードを経由しないrun_sales_judgment()を直接呼ぶので常にフル再計算される）
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/rpc/run_sales_judgment`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/rpc/run_sales_judgment_if_needed`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

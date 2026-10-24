@@ -718,15 +718,14 @@ function showResearchDetailModal(o) {
     img.hidden = true;
   }
 
-  // 指定された並び（メーカー名/JAN、最安値/利益、定価/卸値、下限、送料/配送サイズ、
-  // 仕入先/在庫数、ASIN/ランキング）で表示する
+  // 指定された並び（メーカー名/JAN、最安値/利益、定価/卸値、下限(卸値ver/定価ver)、
+  // 送料/配送サイズ、仕入先/在庫数、ASIN/ランキング）で表示する
   const price = o["新品_最安値"];
-  const lowerBound = calcLowerBound(o);
   document.getElementById("modalContent").innerHTML = `
     <dt>メーカー名/JAN</dt><dd>${o["メーカー名"] ?? "-"} / ${o["JAN"] ?? ""}</dd>
     <dt>最安値/利益</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["利益"] != null ? formatYen(o["利益"]) : "-"}</dd>
     <dt>定価/卸値</dt><dd>${o["定価"] != null ? formatYen(o["定価"]) : "-"} / ${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
-    <dt>下限</dt><dd>${lowerBound != null ? formatYen(lowerBound) : "-"}</dd>
+    <dt>下限(卸値ver/定価ver)</dt><dd>${o["下限_卸値ver"] != null ? formatYen(o["下限_卸値ver"]) : "-"} / ${o["下限_定価ver"] != null ? formatYen(o["下限_定価ver"]) : "-"}</dd>
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
     <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${stockBreakdownText(o)}</dd>
     <dt>ASIN/ランキング</dt><dd>${o["ASIN"] ?? "-"} / ${o["ランキング"] ?? "-"}</dd>
@@ -1857,6 +1856,8 @@ function buildStockdbList(rows) {
     "在庫数_tc": r["在庫数_tc"] != null ? Number(r["在庫数_tc"]) : 0,
     "ASIN": r["ASIN"],
     "売れ筋判定": r["売れ筋判定"],
+    "下限_卸値ver": r["下限_卸値ver"] != null ? Number(r["下限_卸値ver"]) : null,
+    "下限_定価ver": r["下限_定価ver"] != null ? Number(r["下限_定価ver"]) : null,
   }));
 }
 
@@ -1866,26 +1867,6 @@ function stockBreakdownText(o) {
   return `${total} (内訳: TC ${o["在庫数_tc"] ?? 0}件 / 自社 ${o["在庫数_自社"] ?? 0}件)`;
 }
 
-// 下限 = (TCに在庫がある場合は卸値、無ければ定価)を基準額とし、
-// 配送料・梱包資材(200円)・最低利益(基準額<250円→基準額×2、<1500円→300円固定、
-// それ以外→500円固定)を加えたものをbaseとし、base×15%×1.1の手数料を加えた値。
-// 基準額が無ければ算出できないためnullを返す
-function calcLowerBound(o) {
-  const hasTcStock = o["SKU_tc"] && (o["在庫数_tc"] ?? 0) > 0;
-  const baseValue = hasTcStock ? o["卸値"] : o["定価"];
-  if (baseValue == null) return null;
-
-  const shipping = o["配送料金"] ?? 0;
-  const packingFee = 200;
-  let minProfit;
-  if (baseValue < 250) minProfit = baseValue * 2;
-  else if (baseValue < 1500) minProfit = 300;
-  else minProfit = 500;
-
-  const base = baseValue + shipping + packingFee + minProfit;
-  const fee = base * 0.15 * 1.1;
-  return Math.round(base + fee);
-}
 
 // 「システム状態」テーブルから、GASがGmailを最後にチェックした時刻を取得して表示する
 // （新規注文が見つかったかどうかに関わらず記録されている値）

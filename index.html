@@ -718,13 +718,13 @@ function showResearchDetailModal(o) {
     img.hidden = true;
   }
 
-  // 指定された並び（メーカー名/JAN、最安値/利益、定価/卸値、下限(卸値ver/定価ver)、
+  // 指定された並び（メーカー名/JAN、最安値/利益、卸値/定価、下限(卸値ver/定価ver)、
   // 送料/配送サイズ、仕入先/在庫数、ASIN/ランキング）で表示する
   const price = o["新品_最安値"];
   document.getElementById("modalContent").innerHTML = `
     <dt>メーカー名/JAN</dt><dd>${o["メーカー名"] ?? "-"} / ${o["JAN"] ?? ""}</dd>
     <dt>最安値/利益</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["利益"] != null ? formatYen(o["利益"]) : "-"}</dd>
-    <dt>定価/卸値</dt><dd>${o["定価"] != null ? formatYen(o["定価"]) : "-"} / ${o["卸値"] != null ? formatYen(o["卸値"]) : "-"}</dd>
+    <dt>卸値/定価</dt><dd>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"} / ${o["定価"] != null ? formatYen(o["定価"]) : "-"}</dd>
     <dt>下限(卸値ver/定価ver)</dt><dd>${o["下限_卸値ver"] != null ? formatYen(o["下限_卸値ver"]) : "-"} / ${o["下限_定価ver"] != null ? formatYen(o["下限_定価ver"]) : "-"}</dd>
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
     <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${stockBreakdownText(o)}</dd>

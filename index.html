@@ -729,6 +729,8 @@ function showResearchDetailModal(o) {
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
     <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${stockBreakdownText(o)}</dd>
     <dt>ASIN/ランキング</dt><dd>${o["ASIN"] ?? "-"} / ${o["ランキング"] ?? "-"}</dd>
+    <dt>新品最低価格/中古最低価格</dt><dd>${o["新品最低価格"] != null ? formatYen(o["新品最低価格"]) : "-"} / ${o["中古最低価格"] != null ? formatYen(o["中古最低価格"]) : "-"}</dd>
+    <dt>出品者数</dt><dd>${o["出品者数"] ?? "-"}</dd>
   `;
   document.getElementById("detailModal").hidden = false;
 }
@@ -1858,6 +1860,9 @@ function buildStockdbList(rows) {
     "売れ筋判定": r["売れ筋判定"],
     "下限_卸値ver": r["下限_卸値ver"] != null ? Number(r["下限_卸値ver"]) : null,
     "下限_定価ver": r["下限_定価ver"] != null ? Number(r["下限_定価ver"]) : null,
+    "新品最低価格": r["新品最低価格"] != null ? Number(r["新品最低価格"]) : null,
+    "中古最低価格": r["中古最低価格"] != null ? Number(r["中古最低価格"]) : null,
+    "出品者数": r["出品者数"] != null ? Number(r["出品者数"]) : null,
   }));
 }
 

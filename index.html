@@ -730,7 +730,7 @@ function showResearchDetailModal(o) {
     <dt>仕入先/在庫数</dt><dd>${productSupplierLabels(o).join("、")} / ${stockBreakdownText(o)}</dd>
     <dt>ASIN/ランキング</dt><dd>${o["ASIN"] ?? "-"} / ${o["ランキング"] ?? "-"}</dd>
     <dt>新品最低価格/中古最低価格</dt><dd>${o["新品最低価格"] != null ? formatYen(o["新品最低価格"]) : "-"} / ${o["中古最低価格"] != null ? formatYen(o["中古最低価格"]) : "-"}</dd>
-    <dt>出品者数</dt><dd>${o["出品者数"] ?? "-"}</dd>
+    <dt>出品者数/最終取得日時</dt><dd>${o["出品者数"] ?? "-"} / ${formatDateTimeTz(o["最終取得日時"])}</dd>
   `;
   document.getElementById("detailModal").hidden = false;
 }
@@ -798,6 +798,17 @@ function formatDateTime(isoStr) {
   if (!isoStr) return "-";
   const d = new Date(isoStr + "+09:00");
   return d.toLocaleString("ja-JP", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+// timestamptz（タイムゾーン情報を含む文字列）を日本時間表記にする
+function formatDateTimeTz(isoStr) {
+  if (!isoStr) return "-";
+  const d = new Date(isoStr);
+  return d.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit",
   });
@@ -1863,6 +1874,7 @@ function buildStockdbList(rows) {
     "新品最低価格": r["新品最低価格"] != null ? Number(r["新品最低価格"]) : null,
     "中古最低価格": r["中古最低価格"] != null ? Number(r["中古最低価格"]) : null,
     "出品者数": r["出品者数"] != null ? Number(r["出品者数"]) : null,
+    "最終取得日時": r["最終取得日時"],
   }));
 }
 

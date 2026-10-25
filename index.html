@@ -365,6 +365,7 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
 .swatch.line-mercari { background: none; border-top: 3px solid var(--mercari); height: 0; width: 16px; }
 
 .chart-shell { position: relative; height: 360px; }
+.modal-chart-shell { position: relative; height: 260px; margin-top: 16px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
@@ -636,6 +637,9 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       <h3 id="modalTitle" class="modal-product-title"></h3>
       <img id="modalImage" class="modal-product-image" alt="商品画像" hidden>
       <dl id="modalContent"></dl>
+      <div class="modal-chart-shell" id="researchChartWrap" hidden>
+        <canvas id="researchChart"></canvas>
+      </div>
     </div>
   </div>
 </div>
@@ -695,6 +699,7 @@ function showDetailModal(o) {
     <dt>注文番号/SKU</dt><dd>${o["注文番号"]} / ${o["SKU"] ?? ""}</dd>
     <dt>注文日時/発送日時</dt><dd>${formatDateTime(o["注文日時"])} / ${formatDateTime(o["出荷日時"])}</dd>
   `;
+  document.getElementById("researchChartWrap").hidden = true;
   document.getElementById("detailModal").hidden = false;
 }
 
@@ -733,6 +738,7 @@ function showResearchDetailModal(o) {
     <dt>出品者数/最終取得日時</dt><dd>${o["出品者数"] ?? "-"} / ${formatDateTimeTz(o["最終取得日時"])}</dd>
   `;
   document.getElementById("detailModal").hidden = false;
+  renderResearchWeeklyChart(o["ASIN"], o["定価"]);
 }
 
 function findOrderByUid(id) {
@@ -1077,6 +1083,117 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice) {
           grid: { display: false },
           title: { display: true, text: "件数", color: inkColor },
         },
+      },
+    },
+  });
+}
+
+let researchChartInstance = null;
+
+// 日本時間での「MM/DD」表記に変換する（週次グラフのx軸ラベル用）
+function formatDateShortTz(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+// リサーチポップアップ内の週次推移グラフ。Amazon情報の1〜12週目シリーズ
+// （新品最安値/中古最安値/大ランキング/全出品者数/取得日時）をASINで取得し、
+// 取得日時の昇順（ローテーション書き込みのため番号順ではない）に並べて描画する
+async function renderResearchWeeklyChart(asin, teika) {
+  const wrap = document.getElementById("researchChartWrap");
+  if (!asin) {
+    wrap.hidden = true;
+    return;
+  }
+
+  const { data, error } = await supabaseClient.rpc("get_weekly_price_history", { p_asin: asin });
+
+  if (error || !data || data.length === 0) {
+    wrap.hidden = true;
+    return;
+  }
+
+  const weeks = data.map((row) => ({
+    date: row["取得日時"],
+    new: row["新品最安値"],
+    used: row["中古最安値"],
+    rank: row["大ランキング"],
+    sellers: row["出品者数"],
+  }));
+
+  wrap.hidden = false;
+  const labels = weeks.map((w) => formatDateShortTz(w.date));
+  const newPrice = weeks.map((w) => (w.new != null ? Number(w.new) : null));
+  const usedPrice = weeks.map((w) => (w.used != null ? Number(w.used) : null));
+  const rank = weeks.map((w) => (w.rank != null ? Number(w.rank) : null));
+  const sellers = weeks.map((w) => (w.sellers != null ? Number(w.sellers) : null));
+
+  const inkColor = readCssVar("--sub");
+  const gridColor = readCssVar("--line");
+  const orange = "#e8821e";
+  const blue = "#1d4ed8";
+  const lightBlue = "#7dd3fc";
+  const gray = "#9a948a";
+
+  const datasets = [
+    {
+      type: "line", label: "新品最安値", data: newPrice,
+      borderColor: orange, backgroundColor: orange, yAxisID: "yPrice",
+      tension: 0, pointRadius: 3, borderWidth: 2, spanGaps: true, order: 1,
+    },
+    {
+      type: "line", label: "中古最安値", data: usedPrice,
+      borderColor: orange, backgroundColor: orange, borderDash: [6, 4], yAxisID: "yPrice",
+      tension: 0, pointRadius: 3, borderWidth: 2, spanGaps: true, order: 1,
+    },
+    {
+      type: "line", label: "ランキング", data: rank,
+      borderColor: blue, backgroundColor: blue, yAxisID: "yRank",
+      tension: 0, pointRadius: 3, borderWidth: 2, spanGaps: true, order: 1,
+    },
+    {
+      type: "bar", label: "出品者数", data: sellers,
+      backgroundColor: lightBlue, yAxisID: "yCount", order: 3,
+    },
+  ];
+  if (teika != null) {
+    datasets.push({
+      type: "line", label: "定価", data: weeks.map(() => Number(teika)),
+      borderColor: gray, backgroundColor: gray, borderDash: [4, 4], yAxisID: "yPrice",
+      pointRadius: 0, borderWidth: 1.5, order: 2,
+    });
+  }
+
+  if (researchChartInstance) {
+    researchChartInstance.destroy();
+  }
+  researchChartInstance = new Chart(document.getElementById("researchChart"), {
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: inkColor, boxWidth: 12 } },
+      },
+      scales: {
+        x: { ticks: { color: inkColor, maxRotation: 0 }, grid: { display: false } },
+        yPrice: {
+          position: "left",
+          beginAtZero: true,
+          ticks: { color: inkColor },
+          grid: { color: gridColor },
+          title: { display: true, text: "価格", color: inkColor },
+        },
+        yRank: {
+          position: "right",
+          beginAtZero: true,
+          ticks: { color: inkColor },
+          grid: { display: false },
+          title: { display: true, text: "ランキング", color: inkColor },
+        },
+        yCount: { display: false, beginAtZero: true },
       },
     },
   });

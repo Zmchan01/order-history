@@ -723,12 +723,11 @@ function showResearchDetailModal(o) {
     img.hidden = true;
   }
 
-  // 指定された並び（メーカー名/JAN、最安値/利益、卸値/定価、下限(卸値ver/定価ver)、
+  // 指定された並び（メーカー名/JAN、利益、卸値/定価、下限(卸値ver/定価ver)、
   // 送料/配送サイズ、仕入先/在庫数、ASIN/ランキング）で表示する
-  const price = o["新品_最安値"];
   document.getElementById("modalContent").innerHTML = `
     <dt>メーカー名/JAN</dt><dd>${o["メーカー名"] ?? "-"} / ${o["JAN"] ?? ""}</dd>
-    <dt>最安値/利益</dt><dd>${price != null ? formatYen(price) : "-"} / ${o["利益"] != null ? formatYen(o["利益"]) : "-"}</dd>
+    <dt>利益</dt><dd>${o["利益"] != null ? formatYen(o["利益"]) : "-"}</dd>
     <dt>卸値/定価</dt><dd>${o["卸値"] != null ? formatYen(o["卸値"]) : "-"} / ${o["定価"] != null ? formatYen(o["定価"]) : "-"}</dd>
     <dt>下限(卸値ver/定価ver)</dt><dd>${o["下限_卸値ver"] != null ? formatYen(o["下限_卸値ver"]) : "-"} / ${o["下限_定価ver"] != null ? formatYen(o["下限_定価ver"]) : "-"}</dd>
     <dt>送料/配送サイズ</dt><dd>${o["配送料金"] != null ? formatYen(o["配送料金"]) : "-"} / ${o["配送サイズ"] ?? "-"}</dd>
@@ -1090,16 +1089,19 @@ function renderChartCore(labels, azCount, azPrice, mcCount, mcPrice) {
 
 let researchChartInstance = null;
 
-// 日本時間での「MM/DD」表記に変換する（週次グラフのx軸ラベル用）
-function formatDateShortTz(isoStr) {
-  if (!isoStr) return "";
-  const d = new Date(isoStr);
-  return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "2-digit", day: "2-digit" }).format(d);
+// 日本時間での「YYYY-MM」キーを得る（月バケット集計用）
+function monthKeyJST(dateObj) {
+  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit" });
+  const parts = fmt.formatToParts(dateObj);
+  const y = parts.find((p) => p.type === "year").value;
+  const m = parts.find((p) => p.type === "month").value;
+  return `${y}-${m}`;
 }
 
 // リサーチポップアップ内の週次推移グラフ。Amazon情報の1〜12週目シリーズ
 // （新品最安値/中古最安値/大ランキング/全出品者数/取得日時）をASINで取得し、
-// 取得日時の昇順（ローテーション書き込みのため番号順ではない）に並べて描画する
+// 直近12ヶ月分の固定の月軸に対応する月へ振り分けて描画する
+// （同じ月に複数の週データがある場合は取得日時が新しい方を採用する）
 async function renderResearchWeeklyChart(asin, teika) {
   const wrap = document.getElementById("researchChartWrap");
   if (!asin) {
@@ -1108,30 +1110,41 @@ async function renderResearchWeeklyChart(asin, teika) {
   }
 
   const { data, error } = await supabaseClient.rpc("get_weekly_price_history", { p_asin: asin });
-
-  if (error || !data || data.length === 0) {
+  if (error) {
     wrap.hidden = true;
     return;
   }
 
-  const weeks = data.map((row) => ({
-    date: row["取得日時"],
-    new: row["新品最安値"],
-    used: row["中古最安値"],
-    rank: row["大ランキング"],
-    sellers: row["出品者数"],
-  }));
+  // 直近12ヶ月分の固定ラベル（横軸の日付レンジを固定するため、データの有無に関わらず常にこの12ヶ月を表示する）
+  const today = getTodayJST();
+  const months = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    months.push({ key, label: `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}` });
+  }
+  const monthKeys = new Set(months.map((m) => m.key));
+
+  // 週データ（取得日時昇順で返る）を対応する月に振り分ける。同月に複数あれば後勝ちで最新を採用
+  const byMonth = {};
+  for (const row of data || []) {
+    if (!row["取得日時"]) continue;
+    const key = monthKeyJST(new Date(row["取得日時"]));
+    if (!monthKeys.has(key)) continue;
+    byMonth[key] = row;
+  }
 
   wrap.hidden = false;
-  const labels = weeks.map((w) => formatDateShortTz(w.date));
-  const newPrice = weeks.map((w) => (w.new != null ? Number(w.new) : null));
-  const usedPrice = weeks.map((w) => (w.used != null ? Number(w.used) : null));
-  const rank = weeks.map((w) => (w.rank != null ? Number(w.rank) : null));
-  const sellers = weeks.map((w) => (w.sellers != null ? Number(w.sellers) : null));
+  const labels = months.map((m) => m.label);
+  const newPrice = months.map((m) => (byMonth[m.key]?.["新品最安値"] != null ? Number(byMonth[m.key]["新品最安値"]) : null));
+  const usedPrice = months.map((m) => (byMonth[m.key]?.["中古最安値"] != null ? Number(byMonth[m.key]["中古最安値"]) : null));
+  const rank = months.map((m) => (byMonth[m.key]?.["大ランキング"] != null ? Number(byMonth[m.key]["大ランキング"]) : null));
+  const sellers = months.map((m) => (byMonth[m.key]?.["出品者数"] != null ? Number(byMonth[m.key]["出品者数"]) : null));
 
   const inkColor = readCssVar("--sub");
   const gridColor = readCssVar("--line");
   const orange = "#e8821e";
+  const green = "#16a34a";
   const blue = "#1d4ed8";
   const lightBlue = "#7dd3fc";
   const gray = "#9a948a";
@@ -1144,7 +1157,7 @@ async function renderResearchWeeklyChart(asin, teika) {
     },
     {
       type: "line", label: "中古最安値", data: usedPrice,
-      borderColor: orange, backgroundColor: orange, borderDash: [6, 4], yAxisID: "yPrice",
+      borderColor: green, backgroundColor: green, yAxisID: "yPrice",
       tension: 0, pointRadius: 3, borderWidth: 2, spanGaps: true, order: 1,
     },
     {
@@ -1159,7 +1172,7 @@ async function renderResearchWeeklyChart(asin, teika) {
   ];
   if (teika != null) {
     datasets.push({
-      type: "line", label: "定価", data: weeks.map(() => Number(teika)),
+      type: "line", label: "定価", data: months.map(() => Number(teika)),
       borderColor: gray, backgroundColor: gray, borderDash: [4, 4], yAxisID: "yPrice",
       pointRadius: 0, borderWidth: 1.5, order: 2,
     });
@@ -1188,7 +1201,8 @@ async function renderResearchWeeklyChart(asin, teika) {
         },
         yRank: {
           position: "right",
-          beginAtZero: true,
+          min: 1,
+          max: 100000,
           ticks: { color: inkColor },
           grid: { display: false },
           title: { display: true, text: "ランキング", color: inkColor },

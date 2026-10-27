@@ -2052,23 +2052,8 @@ async function showDashboard() {
     DATA = buildMonthlyData(rows);
     ORDER_LIST = buildOrderListByMonth(rows);
 
-    // リサーチの売れ筋判定・利益を、読み込みの度に必ずフル再計算する
-    // （各テーブルから最新値を集計し直してstockdb_リサーチ_表示用に反映してから
-    // リサーチタブに表示する。1日1回ガードは経由しないため毎回十数秒かかる）
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/rpc/run_sales_judgment`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: "{}",
-      });
-    } catch (e) {
-      console.error("売れ筋判定の自動更新に失敗しました", e);
-    }
-
+    // 売れ筋判定・利益の再計算は負荷が高いため読み込み時には行わない。
+    // リサーチタブの「再取得」ボタン押下時(wireResearchFilterControls内)のみ実行する
     const stockdbRows = await fetchAllResearchRows();
     STOCKDB_LIST = buildStockdbList(stockdbRows);
     notice.hidden = true;

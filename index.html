@@ -1819,7 +1819,7 @@ const KEEPA_COLUMNS = [
   "中古_出品者数", ...kAvg("中古_出品者数"), "中古_最安値", ...kAvg("中古_最安値"),
   ...kPer("中古_最大価格"), ...kPer("中古_最小価格"),
   "配送サイズ", "配送料金", "梱包サイズ", "製品サイズ", "初回取得日時", "最新取得日時",
-  "値崩れなし", "定価超え",
+  "値崩れなし", "定価超え", "買い時ポイント", "買い時利益",
 ];
 // 画面に出す列：メーカー名_日・メーカー名_英は「メーカー名」1列にまとめる
 // （日本語名があれば日本語名、無ければ英語名を表示）
@@ -1874,6 +1874,8 @@ function rangeFilters(idBase, label, column, steps, unitText) {
 const KEEPA_SORTS = [
   ["score", "売れ筋ポイントの高い順", "売れ筋ポイント", false],
   ["profit", "想定利益の高い順", "想定利益", false],
+  ["buy", "買い時ポイントの高い順", "買い時ポイント", false],
+  ["buyProfit", "買い時利益の高い順", "買い時利益", false],
   ["drops30", "売れた回数(30日)の多い順", "大ランキング下降回数_30日", false],
   ["high30", "高値で売れた回数(30日)の多い順", "高値時ランキング下降回数_30日", false],
   ["monthly", "月間販売数の多い順", "月間販売数", false],
@@ -1914,6 +1916,9 @@ const KEEPA_FILTERS = [
   { id: "kfProfitMax", label: "〜", range: "end",
     options: [["all", "上限なし"], ...PROFIT_STEPS.map((n) => [String(n), `${n.toLocaleString()}円`])],
     apply: (q, v) => (v === "all" ? q : q.lte("想定利益", Number(v))) },
+  // 買い時ポイント・買い時利益：今の安い価格で仕入れ、90日平均の価格に戻ったら売る想定の点数と利益
+  ...rangeFilters("kfBuy", "買い時ポイント", "買い時ポイント", SCORE_STEPS, (n) => `${n}点`),
+  ...rangeFilters("kfBuyProfit", "買い時利益", "買い時利益", PROFIT_STEPS, (n) => `${n.toLocaleString()}円`),
   // 発売日：年の範囲指定（下限年の1月1日以降〜上限年の12月31日以前）。指定すると発売日が空欄の商品は除かれる
   { id: "kfReleaseMin", label: "発売日", range: "start",
     options: [["all", "下限なし"], ...RELEASE_YEARS.map((y) => [String(y), `${y}年`])],

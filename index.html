@@ -1787,7 +1787,9 @@ function wireTabButtons() {
 // 通信量を抑えるため、表示中のページの100件だけを取得する（全件は読み込まない）
 // keepa情報はRLSで「ログイン済みユーザーのみ読み取り可」にしてある
 // ===================================================================
-const KEEPA_PAGE_SIZE = 100;
+// 1ページの表示件数（プルダウンで10/30/50/70/100から選び、検索ボタンで反映。初期値100）
+const KEEPA_PAGE_SIZES = [10, 30, 50, 70, 100];
+let keepaPageSize = 100;
 let keepaPage = 1;
 let keepaTotal = 0;
 let keepaLoaded = false;
@@ -1909,6 +1911,9 @@ function renderKeepaFilters() {
       html += `<label class="filter-field"><span class="filter-label">${escapeKeepa(f.label)}</span>${select}</label>`;
     }
   }
+  // 表示件数（絞り込み条件ではないため KEEPA_FILTERS とは別に置く）
+  html += `<label class="filter-field"><span class="filter-label">表示件数</span><select id="kfPageSize">${KEEPA_PAGE_SIZES
+    .map((n) => `<option value="${n}"${n === keepaPageSize ? " selected" : ""}>${n}件</option>`).join("")}</select></label>`;
   html += `<button type="button" class="detail-button keepa-search-button" id="kfSearch">検索</button>`;
   html += `<button type="button" class="detail-button" id="kfReset">リセット</button>`;
   row.innerHTML = html;
@@ -1916,11 +1921,13 @@ function renderKeepaFilters() {
   document.getElementById("kfSearch").addEventListener("click", () => {
     keepaAppliedFilters = {};
     for (const f of KEEPA_FILTERS) keepaAppliedFilters[f.id] = document.getElementById(f.id).value;
+    keepaPageSize = Number(document.getElementById("kfPageSize").value);
     loadKeepaPage(1);
   });
-  // リセット：プルダウンを「全て」に戻すだけ（通信はしない。検索ボタンで反映）
+  // リセット：プルダウンを「全て」・表示件数100件に戻すだけ（通信はしない。検索ボタンで反映）
   document.getElementById("kfReset").addEventListener("click", () => {
     for (const f of KEEPA_FILTERS) document.getElementById(f.id).value = "all";
+    document.getElementById("kfPageSize").value = "100";
   });
 }
 
@@ -1945,7 +1952,7 @@ async function loadKeepaPage(page) {
   caption.textContent = "読み込み中...";
   // 初回だけ絞り込みプルダウンを描画する
   if (!document.getElementById("kfStock")) renderKeepaFilters();
-  const from = (page - 1) * KEEPA_PAGE_SIZE;
+  const from = (page - 1) * keepaPageSize;
   try {
     let q = supabaseClient
       .from("keepa情報")
@@ -1954,7 +1961,7 @@ async function loadKeepaPage(page) {
     const { data, count, error } = await q
       .order("売れ筋ポイント", { ascending: false, nullsFirst: false })
       .order("ASIN")
-      .range(from, from + KEEPA_PAGE_SIZE - 1);
+      .range(from, from + keepaPageSize - 1);
     if (error) throw error;
     keepaPage = page;
     keepaTotal = count ?? 0;
@@ -2011,7 +2018,8 @@ function escapeKeepa(s) {
 
 // 表の上下にページ送り（最初・前へ・ページ番号入力・次へ・最後）を描画する
 function renderKeepaPagers() {
-  const last = Math.max(1, Math.ceil(keepaTotal / KEEPA_PAGE_SIZE));
+  // 最終ページ番号＝総件数÷選択中の表示件数（切り上げ）
+  const last = Math.max(1, Math.ceil(keepaTotal / keepaPageSize));
   for (const id of ["keepaPagerTop", "keepaPagerBottom"]) {
     const el = document.getElementById(id);
     el.innerHTML = `

@@ -1802,7 +1802,7 @@ const kPer = (n) => KP.map((p) => n + p);
 const kAvg = (n) => KA.map((p) => n + p);
 const KEEPA_COLUMNS = [
   "ASIN", "在庫数", "売れ筋ポイント", "売れ筋パターン", "想定利益", "想定利益率",
-  "メーカー名_日", "メーカー名_英", "タイトル", "JAN", "型番",
+  "メーカー名_日", "メーカー名_英", "タイトル", "JAN", "型番", "発売日",
   "大ランキング名", ...kPer("大ランキング順位最大"), ...kPer("大ランキング順位最小"),
   ...kPer("大ランキング下降回数"), ...kPer("高値時ランキング下降回数"),
   "月間販売数", "月間販売数_全期間平均",
@@ -1981,6 +1981,8 @@ async function loadKeepaPage(page) {
 // 1セル分の表示文字列を作る（数値は3桁区切り、日時は日本時間、空欄は空文字）
 function keepaCellText(col, v) {
   if (v == null || v === "") return "";
+  // 発売日は「2024-03-15」で届くので「2024/03/15」に整える
+  if (col === "発売日") return String(v).replace(/-/g, "/");
   if (KEEPA_DATE_COLUMNS.has(col)) return new Date(v).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
   if (typeof v === "number") return v.toLocaleString();
   return String(v);

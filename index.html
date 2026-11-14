@@ -1874,6 +1874,11 @@ function renderKeepaTable(rows) {
       const cls = KEEPA_LONG_COLUMNS.has(c) ? "keepa-long" : KEEPA_TEXT_COLUMNS.has(c) ? "keepa-text" : "";
       // 省略表示されるセルは、マウスを乗せると全文が出るようtitleを付ける
       const title = KEEPA_LONG_COLUMNS.has(c) && text ? ` title="${text}"` : "";
+      // ASINはAmazonの商品ページへのリンクにする（新しいタブで開く）
+      if (c === "ASIN" && text) {
+        const href = `https://www.amazon.co.jp/dp/${encodeURIComponent(r["ASIN"])}`;
+        return `<td class="${cls}"><a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a></td>`;
+      }
       return `<td class="${cls}"${title}>${text}</td>`;
     }).join("");
     return `<tr>${tds}</tr>`;

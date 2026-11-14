@@ -1808,12 +1808,22 @@ const KEEPA_COLUMNS = [
   ...kPer("中古_最大価格"), ...kPer("中古_最小価格"),
   "配送サイズ", "配送料金", "梱包サイズ", "製品サイズ", "初回取得日時", "最新取得日時",
 ];
+// 画面に出す列：メーカー名_日・メーカー名_英は「メーカー名」1列にまとめる
+// （日本語名があれば日本語名、無ければ英語名を表示）
+const KEEPA_DISPLAY_COLUMNS = KEEPA_COLUMNS
+  .filter((c) => c !== "メーカー名_英")
+  .map((c) => (c === "メーカー名_日" ? "メーカー名" : c));
+// 表示列の値を行から取り出す（メーカー名だけは日→英の順で採用）
+function keepaValue(r, col) {
+  if (col === "メーカー名") return r["メーカー名_日"] || r["メーカー名_英"];
+  return r[col];
+}
 // 文字のカラム（左寄せ）と、長くなりやすいカラム（幅を制限して…で省略）
 const KEEPA_TEXT_COLUMNS = new Set([
-  "ASIN", "売れ筋パターン", "メーカー名_日", "メーカー名_英", "タイトル", "JAN", "型番",
+  "ASIN", "売れ筋パターン", "メーカー名", "タイトル", "JAN", "型番",
   "大ランキング名", "小ランキング名", "配送サイズ", "梱包サイズ", "製品サイズ",
 ]);
-const KEEPA_LONG_COLUMNS = new Set(["タイトル", "メーカー名_英", "梱包サイズ", "製品サイズ", "JAN"]);
+const KEEPA_LONG_COLUMNS = new Set(["タイトル", "メーカー名", "梱包サイズ", "製品サイズ", "JAN"]);
 const KEEPA_DATE_COLUMNS = new Set(["初回取得日時", "最新取得日時"]);
 
 // 指定ページの100件と総件数をSupabaseから取得して表示する
@@ -1856,11 +1866,11 @@ function keepaCellText(col, v) {
 function renderKeepaTable(rows) {
   const head = document.getElementById("keepaHeadRow");
   if (!head.children.length) {
-    head.innerHTML = KEEPA_COLUMNS.map((c) => `<th>${escapeKeepa(c)}</th>`).join("");
+    head.innerHTML = KEEPA_DISPLAY_COLUMNS.map((c) => `<th>${escapeKeepa(c)}</th>`).join("");
   }
   document.getElementById("keepaListBody").innerHTML = rows.map((r) => {
-    const tds = KEEPA_COLUMNS.map((c) => {
-      const text = escapeKeepa(keepaCellText(c, r[c]));
+    const tds = KEEPA_DISPLAY_COLUMNS.map((c) => {
+      const text = escapeKeepa(keepaCellText(c, keepaValue(r, c)));
       const cls = KEEPA_LONG_COLUMNS.has(c) ? "keepa-long" : KEEPA_TEXT_COLUMNS.has(c) ? "keepa-text" : "";
       // 省略表示されるセルは、マウスを乗せると全文が出るようtitleを付ける
       const title = KEEPA_LONG_COLUMNS.has(c) && text ? ` title="${text}"` : "";

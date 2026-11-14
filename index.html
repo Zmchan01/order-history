@@ -644,6 +644,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 
   <!-- 売れ筋タブ：Supabaseのkeepa情報テーブルを1ページ100件ずつ表示（売れ筋ポイントの高い順） -->
   <div id="keepaTabView" hidden>
+  <!-- 売れ筋タブの絞り込み条件（選択肢はJSのKEEPA_FILTERSから組み立てる） -->
+  <section class="panel" id="keepaFilterPanel">
+    <div class="filter-row" id="keepaFilterRow"></div>
+  </section>
   <section class="panel" id="keepaListPanel">
     <div class="panel-header">
       <h2>売れ筋</h2>
@@ -1826,15 +1830,117 @@ const KEEPA_TEXT_COLUMNS = new Set([
 const KEEPA_LONG_COLUMNS = new Set(["タイトル", "メーカー名", "梱包サイズ", "製品サイズ", "JAN"]);
 const KEEPA_DATE_COLUMNS = new Set(["初回取得日時", "最新取得日時"]);
 
+// ====== 売れ筋タブの絞り込み条件 ======
+// 各プルダウンの選択肢と、選んだときにSupabaseへ付ける条件を定義する
+// apply(q, v) は通常の条件、ors(v) は「空欄も含む」等のOR条件（文字列）を返す
+// 「空欄＝無し」とみなす条件は、Keepa未取得の行が混ざらないよう初回取得日時ありに限定する
+const KEEPA_CATEGORIES = [
+  "おもちゃ", "ホビー", "ゲーム", "文房具・オフィス用品", "ホーム＆キッチン", "食品・飲料・お酒",
+  "スポーツ＆アウトドア", "家電＆カメラ", "DIY・工具・ガーデン", "ベビー＆マタニティ", "ビューティー",
+  "ファッション", "ミュージック", "車＆バイク", "DVD", "ペット用品", "本", "楽器・音響機器",
+  "ドラッグストア", "産業・研究開発用品", "パソコン・周辺機器", "洋書", "PCソフト",
+];
+const SCORE_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+const PROFIT_STEPS = [0, 500, 1000, 1500, 2000, 3000, 5000, 10000];
+const KEEPA_FILTERS = [
+  { id: "kfStock", label: "在庫状況", options: [["all", "全て"], ["in", "アリ"], ["out", "ナシ"]],
+    apply: (q, v) => (v === "in" ? q.gte("在庫数", 1) : q),
+    ors: (v) => (v === "out" ? "在庫数.is.null,在庫数.eq.0" : null) },
+  { id: "kfPattern", label: "売れ筋パターン",
+    options: [["all", "全て"], ["Amazon不在", "Amazon不在"], ["Amazon在庫切れあり", "Amazon在庫切れあり"], ["Amazon常駐", "Amazon常駐"]],
+    apply: (q, v) => (v === "all" ? q : q.eq("売れ筋パターン", v)) },
+  // 売れ筋ポイント・想定利益は「下限〜上限」の2つのプルダウンで範囲指定
+  { id: "kfScoreMin", label: "売れ筋ポイント", range: "start",
+    options: [["all", "下限なし"], ...SCORE_STEPS.map((n) => [String(n), `${n}点`])],
+    apply: (q, v) => (v === "all" ? q : q.gte("売れ筋ポイント", Number(v))) },
+  { id: "kfScoreMax", label: "〜", range: "end",
+    options: [["all", "上限なし"], ...SCORE_STEPS.map((n) => [String(n), `${n}点`])],
+    apply: (q, v) => (v === "all" ? q : q.lte("売れ筋ポイント", Number(v))) },
+  { id: "kfProfitMin", label: "想定利益", range: "start",
+    options: [["all", "下限なし"], ...PROFIT_STEPS.map((n) => [String(n), `${n.toLocaleString()}円`])],
+    apply: (q, v) => (v === "all" ? q : q.gte("想定利益", Number(v))) },
+  { id: "kfProfitMax", label: "〜", range: "end",
+    options: [["all", "上限なし"], ...PROFIT_STEPS.map((n) => [String(n), `${n.toLocaleString()}円`])],
+    apply: (q, v) => (v === "all" ? q : q.lte("想定利益", Number(v))) },
+  { id: "kfCategory", label: "大ランキング名",
+    options: [["all", "全て"], ...KEEPA_CATEGORIES.map((c) => [c, c])],
+    apply: (q, v) => (v === "all" ? q : q.eq("大ランキング名", v)) },
+  { id: "kfDrops30", label: "売れた回数(30日)",
+    options: [["all", "全て"], ["15", "15回以上"], ["8", "8回以上"], ["4", "4回以上"], ["1", "1回以上"]],
+    apply: (q, v) => (v === "all" ? q : q.gte("大ランキング下降回数_30日", Number(v))) },
+  { id: "kfDrops7", label: "直近7日の売れ", options: [["all", "全て"], ["yes", "売れあり"], ["no", "売れなし"]],
+    apply: (q, v) => (v === "yes" ? q.gte("大ランキング下降回数_7日", 1) : v === "no" ? q.not("初回取得日時", "is", null) : q),
+    ors: (v) => (v === "no" ? "大ランキング下降回数_7日.is.null,大ランキング下降回数_7日.eq.0" : null) },
+  { id: "kfHigh30", label: "高値で売れた回数(30日)",
+    options: [["all", "全て"], ["5", "5回以上"], ["3", "3回以上"], ["1", "1回以上"]],
+    apply: (q, v) => (v === "all" ? q : q.gte("高値時ランキング下降回数_30日", Number(v))) },
+  { id: "kfSellers", label: "新品出品者数",
+    options: [["all", "全て"], ["0", "0人"], ["3", "3人以下"], ["5", "5人以下"], ["10", "10人以下"]],
+    apply: (q, v) => (v === "all" ? q : q.not("初回取得日時", "is", null)),
+    ors: (v) => (v === "all" ? null : `新品_出品者数.is.null,新品_出品者数.lte.${Number(v)}`) },
+  { id: "kfAmazon", label: "Amazon本体(現在)", options: [["all", "全て"], ["none", "出品なし"], ["sell", "出品あり"]],
+    apply: (q, v) => (v === "none" ? q.is("Amazon価格", null).not("初回取得日時", "is", null)
+      : v === "sell" ? q.not("Amazon価格", "is", null) : q) },
+  { id: "kfRank", label: "ランキング(7日最高)",
+    options: [["all", "全て"], ["10000", "1万位以内"], ["50000", "5万位以内"], ["100000", "10万位以内"]],
+    apply: (q, v) => (v === "all" ? q : q.lte("大ランキング順位最小_7日", Number(v))) },
+];
+
+// 絞り込みプルダウンとリセットボタンを描画し、変更時に1ページ目から読み込み直す
+function renderKeepaFilters() {
+  const row = document.getElementById("keepaFilterRow");
+  let html = "";
+  for (const f of KEEPA_FILTERS) {
+    const select = `<select id="${f.id}">${f.options
+      .map(([v, t]) => `<option value="${escapeKeepa(v)}">${escapeKeepa(t)}</option>`).join("")}</select>`;
+    if (f.range === "start") {
+      // 範囲指定の下限側：ラベルと下限・上限のプルダウンを1つの枠にまとめる
+      html += `<div class="filter-field"><span class="filter-label">${escapeKeepa(f.label)}</span>${select}`;
+    } else if (f.range === "end") {
+      html += `<span>〜</span>${select}</div>`;
+    } else {
+      html += `<label class="filter-field"><span class="filter-label">${escapeKeepa(f.label)}</span>${select}</label>`;
+    }
+  }
+  html += `<button type="button" class="detail-button" id="kfReset">リセット</button>`;
+  row.innerHTML = html;
+  for (const f of KEEPA_FILTERS) {
+    document.getElementById(f.id).addEventListener("change", () => loadKeepaPage(1));
+  }
+  document.getElementById("kfReset").addEventListener("click", () => {
+    for (const f of KEEPA_FILTERS) document.getElementById(f.id).value = "all";
+    loadKeepaPage(1);
+  });
+}
+
+// 選択中の絞り込み条件をSupabaseのクエリに付ける
+function applyKeepaFilters(q) {
+  const orGroups = [];
+  for (const f of KEEPA_FILTERS) {
+    const v = document.getElementById(f.id).value;
+    q = f.apply(q, v);
+    const o = f.ors ? f.ors(v) : null;
+    if (o) orGroups.push(o);
+  }
+  // OR条件が複数あるときは and(or(...),or(...)) の形にまとめて1つにする
+  if (orGroups.length === 1) q = q.or(orGroups[0]);
+  else if (orGroups.length > 1) q = q.or(`and(${orGroups.map((g) => `or(${g})`).join(",")})`);
+  return q;
+}
+
 // 指定ページの100件と総件数をSupabaseから取得して表示する
 async function loadKeepaPage(page) {
   const caption = document.getElementById("keepaListCaption");
   caption.textContent = "読み込み中...";
+  // 初回だけ絞り込みプルダウンを描画する
+  if (!document.getElementById("kfStock")) renderKeepaFilters();
   const from = (page - 1) * KEEPA_PAGE_SIZE;
   try {
-    const { data, count, error } = await supabaseClient
+    let q = supabaseClient
       .from("keepa情報")
-      .select(KEEPA_COLUMNS.join(","), { count: "exact" })
+      .select(KEEPA_COLUMNS.join(","), { count: "exact" });
+    q = applyKeepaFilters(q);
+    const { data, count, error } = await q
       .order("売れ筋ポイント", { ascending: false, nullsFirst: false })
       .order("ASIN")
       .range(from, from + KEEPA_PAGE_SIZE - 1);

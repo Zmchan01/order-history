@@ -1787,9 +1787,10 @@ function wireTabButtons() {
 // 通信量を抑えるため、表示中のページの100件だけを取得する（全件は読み込まない）
 // keepa情報はRLSで「ログイン済みユーザーのみ読み取り可」にしてある
 // ===================================================================
-// 1ページの表示件数（プルダウンで10/30/50/70/100から選び、検索ボタンで反映。初期値100）
+// 1ページの表示件数（プルダウンで10/30/50/70/100から選び、検索ボタンで反映。初期値30）
 const KEEPA_PAGE_SIZES = [10, 30, 50, 70, 100];
-let keepaPageSize = 100;
+const KEEPA_DEFAULT_PAGE_SIZE = 30;
+let keepaPageSize = KEEPA_DEFAULT_PAGE_SIZE;
 let keepaPage = 1;
 let keepaTotal = 0;
 let keepaLoaded = false;
@@ -1924,10 +1925,10 @@ function renderKeepaFilters() {
     keepaPageSize = Number(document.getElementById("kfPageSize").value);
     loadKeepaPage(1);
   });
-  // リセット：プルダウンを「全て」・表示件数100件に戻すだけ（通信はしない。検索ボタンで反映）
+  // リセット：プルダウンを「全て」・表示件数30件に戻すだけ（通信はしない。検索ボタンで反映）
   document.getElementById("kfReset").addEventListener("click", () => {
     for (const f of KEEPA_FILTERS) document.getElementById(f.id).value = "all";
-    document.getElementById("kfPageSize").value = "100";
+    document.getElementById("kfPageSize").value = String(KEEPA_DEFAULT_PAGE_SIZE);
   });
 }
 

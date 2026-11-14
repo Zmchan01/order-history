@@ -1887,13 +1887,13 @@ let keepaSort = "score";
 // 発売日の年の選択肢：今年〜2000年（新しい順。今年の分は毎年自動で増える）
 const RELEASE_YEARS = Array.from({ length: new Date().getFullYear() - 1999 }, (_, i) => new Date().getFullYear() - i);
 const KEEPA_FILTERS = [
-  // キーワード：タイトル・メーカー名・型番・JANのどれかに一部一致（テキスト入力）
-  { id: "kfKeyword", label: "キーワード", type: "text", placeholder: "タイトル・メーカー・型番・JAN",
+  // キーワード：ASIN・タイトル・メーカー名・型番・JANのどれかに一部一致（テキスト入力）
+  { id: "kfKeyword", label: "キーワード", type: "text", placeholder: "ASIN・タイトル・メーカー・型番・JAN",
     apply: (q) => q,
     ors: (v) => {
       const kw = v === "all" ? "" : cleanKeyword(v);
       if (!kw) return null;
-      return ["タイトル", "メーカー名_日", "メーカー名_英", "型番", "JAN"].map((c) => `${c}.ilike."*${kw}*"`).join(",");
+      return ["ASIN", "タイトル", "メーカー名_日", "メーカー名_英", "型番", "JAN"].map((c) => `${c}.ilike."*${kw}*"`).join(",");
     } },
   { id: "kfStock", label: "在庫状況", options: [["all", "全て"], ["in", "アリ"], ["out", "ナシ"]],
     apply: (q, v) => (v === "in" ? q.gte("在庫数", 1) : q),

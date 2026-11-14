@@ -389,6 +389,9 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .keepa-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; font-size: 0.85rem; }
 .keepa-pager input { width: 70px; font-family: inherit; font-size: 0.85rem; padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
 .keepa-pager .detail-button:disabled { opacity: 0.4; cursor: default; }
+/* 検索ボタンは目立つよう塗りつぶし */
+.keepa-search-button { background: var(--amazon); color: #fff; border-color: var(--amazon); font-weight: 600; }
+.keepa-search-button:hover { background: color-mix(in srgb, var(--amazon) 85%, #000); }
 .site-amazon { color: var(--amazon); font-weight: 600; }
 .site-mercari { color: var(--mercari); font-weight: 600; }
 
@@ -1886,7 +1889,11 @@ const KEEPA_FILTERS = [
     apply: (q, v) => (v === "all" ? q : q.lte("大ランキング順位最小_7日", Number(v))) },
 ];
 
-// 絞り込みプルダウンとリセットボタンを描画し、変更時に1ページ目から読み込み直す
+// 検索ボタンを押した時点の絞り込み条件（id→選択値）。ページ送りもこの条件で取得する
+// （プルダウンを変えただけでは通信しない。検索ボタンでまとめて1回だけ取得する）
+let keepaAppliedFilters = {};
+
+// 絞り込みプルダウンと検索・リセットボタンを描画する
 function renderKeepaFilters() {
   const row = document.getElementById("keepaFilterRow");
   let html = "";
@@ -1902,22 +1909,26 @@ function renderKeepaFilters() {
       html += `<label class="filter-field"><span class="filter-label">${escapeKeepa(f.label)}</span>${select}</label>`;
     }
   }
+  html += `<button type="button" class="detail-button keepa-search-button" id="kfSearch">検索</button>`;
   html += `<button type="button" class="detail-button" id="kfReset">リセット</button>`;
   row.innerHTML = html;
-  for (const f of KEEPA_FILTERS) {
-    document.getElementById(f.id).addEventListener("change", () => loadKeepaPage(1));
-  }
+  // 検索：今のプルダウンの選択値を条件として確定し、1ページ目から取得する
+  document.getElementById("kfSearch").addEventListener("click", () => {
+    keepaAppliedFilters = {};
+    for (const f of KEEPA_FILTERS) keepaAppliedFilters[f.id] = document.getElementById(f.id).value;
+    loadKeepaPage(1);
+  });
+  // リセット：プルダウンを「全て」に戻すだけ（通信はしない。検索ボタンで反映）
   document.getElementById("kfReset").addEventListener("click", () => {
     for (const f of KEEPA_FILTERS) document.getElementById(f.id).value = "all";
-    loadKeepaPage(1);
   });
 }
 
-// 選択中の絞り込み条件をSupabaseのクエリに付ける
+// 検索ボタンで確定した絞り込み条件をSupabaseのクエリに付ける
 function applyKeepaFilters(q) {
   const orGroups = [];
   for (const f of KEEPA_FILTERS) {
-    const v = document.getElementById(f.id).value;
+    const v = keepaAppliedFilters[f.id] || "all";
     q = f.apply(q, v);
     const o = f.ors ? f.ors(v) : null;
     if (o) orGroups.push(o);

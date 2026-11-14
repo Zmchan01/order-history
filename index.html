@@ -377,6 +377,18 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .table-wrap { overflow-x: auto; }
 .order-table { min-width: 660px; }
 .order-table thead th { text-align: center; }
+/* 売れ筋タブ：カラムが多いため横スクロール＋折り返しなし、見出しと先頭列(ASIN)を固定 */
+.keepa-table-wrap { max-height: 75vh; overflow: auto; }
+.keepa-table { width: max-content; }
+.keepa-table th, .keepa-table td { white-space: nowrap; }
+.keepa-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 2; text-align: center; }
+.keepa-table th:first-child, .keepa-table td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+.keepa-table thead th:first-child { z-index: 3; }
+.keepa-table td.keepa-text { text-align: left; }
+.keepa-table td.keepa-long { text-align: left; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.keepa-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; font-size: 0.85rem; }
+.keepa-pager input { width: 70px; font-family: inherit; font-size: 0.85rem; padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.keepa-pager .detail-button:disabled { opacity: 0.4; cursor: default; }
 .site-amazon { color: var(--amazon); font-weight: 600; }
 .site-mercari { color: var(--mercari); font-weight: 600; }
 
@@ -438,6 +450,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
   <div class="tab-row">
     <button type="button" class="tab-button active" id="orderTabButton">受注管理表</button>
     <button type="button" class="tab-button" id="researchTabButton">リサーチ</button>
+    <button type="button" class="tab-button" id="keepaTabButton">売れ筋</button>
   </div>
 
   <div id="orderTabView">
@@ -626,6 +639,24 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
       </table>
     </div>
     <button type="button" class="detail-button" id="researchListMoreButton" hidden>さらに表示</button>
+  </section>
+  </div>
+
+  <!-- 売れ筋タブ：Supabaseのkeepa情報テーブルを1ページ100件ずつ表示（売れ筋ポイントの高い順） -->
+  <div id="keepaTabView" hidden>
+  <section class="panel" id="keepaListPanel">
+    <div class="panel-header">
+      <h2>売れ筋</h2>
+      <p class="caption" id="keepaListCaption"></p>
+    </div>
+    <div class="keepa-pager" id="keepaPagerTop"></div>
+    <div class="table-wrap keepa-table-wrap">
+      <table class="keepa-table">
+        <thead><tr id="keepaHeadRow"></tr></thead>
+        <tbody id="keepaListBody"></tbody>
+      </table>
+    </div>
+    <div class="keepa-pager" id="keepaPagerBottom"></div>
   </section>
   </div>
 </div>
@@ -1724,20 +1755,149 @@ function wireResearchFilterControls() {
   });
 }
 
-// 受注管理表／リサーチタブの切り替えボタンを配線する
+// 受注管理表／リサーチ／売れ筋タブの切り替えボタンを配線する
+// （押したタブだけ表示し、他のタブは隠す）
+const TABS = [
+  { button: "orderTabButton", view: "orderTabView" },
+  { button: "researchTabButton", view: "researchTabView" },
+  { button: "keepaTabButton", view: "keepaTabView" },
+];
 function wireTabButtons() {
-  document.getElementById("orderTabButton").addEventListener("click", () => {
-    document.getElementById("orderTabButton").classList.add("active");
-    document.getElementById("researchTabButton").classList.remove("active");
-    document.getElementById("orderTabView").hidden = false;
-    document.getElementById("researchTabView").hidden = true;
-  });
-  document.getElementById("researchTabButton").addEventListener("click", () => {
-    document.getElementById("researchTabButton").classList.add("active");
-    document.getElementById("orderTabButton").classList.remove("active");
-    document.getElementById("researchTabView").hidden = false;
-    document.getElementById("orderTabView").hidden = true;
-  });
+  for (const tab of TABS) {
+    document.getElementById(tab.button).addEventListener("click", () => {
+      for (const t of TABS) {
+        document.getElementById(t.button).classList.toggle("active", t === tab);
+        document.getElementById(t.view).hidden = t !== tab;
+      }
+      // 売れ筋タブは初めて開いたときに1ページ目を読み込む（ダッシュボード表示を遅くしないため）
+      if (tab.view === "keepaTabView" && !keepaLoaded) loadKeepaPage(1);
+    });
+  }
+}
+
+// ===================================================================
+// 売れ筋タブ：Supabaseのkeepa情報テーブルを1ページ100件ずつ表示する
+// 通信量を抑えるため、表示中のページの100件だけを取得する（全件は読み込まない）
+// keepa情報はRLSで「ログイン済みユーザーのみ読み取り可」にしてある
+// ===================================================================
+const KEEPA_PAGE_SIZE = 100;
+let keepaPage = 1;
+let keepaTotal = 0;
+let keepaLoaded = false;
+
+// keepa情報のカラム（D:\Keepa_情報取得\keepa情報_カラム追加.py の並び順に合わせる）
+// 長文の「商品説明」「詳細情報一括」は通信量を減らすため取得しない
+const KP = ["_7日", "_30日", "_90日"];
+const KA = ["_平均7日", "_平均30日", "_平均90日"];
+const kPer = (n) => KP.map((p) => n + p);
+const kAvg = (n) => KA.map((p) => n + p);
+const KEEPA_COLUMNS = [
+  "ASIN", "在庫数", "売れ筋ポイント", "売れ筋パターン", "想定利益", "想定利益率",
+  "メーカー名_日", "メーカー名_英", "タイトル", "JAN", "型番",
+  "大ランキング名", ...kPer("大ランキング順位最大"), ...kPer("大ランキング順位最小"),
+  ...kPer("大ランキング下降回数"), ...kPer("高値時ランキング下降回数"),
+  "月間販売数", "月間販売数_全期間平均",
+  "小ランキング名", ...kPer("小ランキング順位最大"), ...kPer("小ランキング順位最小"),
+  "参考価格", ...kPer("Amazon在庫切れ率"), ...kPer("Amazon在庫切れ回数"),
+  "Amazon価格", ...kPer("Amazon最大価格"), ...kPer("Amazon最小価格"),
+  "トップカート価格", ...kAvg("トップカート価格"),
+  ...kPer("トップカート最大価格"), ...kPer("トップカート最小価格"), ...kPer("高値期間割合"),
+  "新品_出品者数", ...kAvg("新品_出品者数"), "新品_最安値", ...kAvg("新品_最安値"),
+  ...kPer("新品_最大価格"), ...kPer("新品_最小価格"),
+  "中古_出品者数", ...kAvg("中古_出品者数"), "中古_最安値", ...kAvg("中古_最安値"),
+  ...kPer("中古_最大価格"), ...kPer("中古_最小価格"),
+  "配送サイズ", "配送料金", "梱包サイズ", "製品サイズ", "初回取得日時", "最新取得日時",
+];
+// 文字のカラム（左寄せ）と、長くなりやすいカラム（幅を制限して…で省略）
+const KEEPA_TEXT_COLUMNS = new Set([
+  "ASIN", "売れ筋パターン", "メーカー名_日", "メーカー名_英", "タイトル", "JAN", "型番",
+  "大ランキング名", "小ランキング名", "配送サイズ", "梱包サイズ", "製品サイズ",
+]);
+const KEEPA_LONG_COLUMNS = new Set(["タイトル", "メーカー名_英", "梱包サイズ", "製品サイズ", "JAN"]);
+const KEEPA_DATE_COLUMNS = new Set(["初回取得日時", "最新取得日時"]);
+
+// 指定ページの100件と総件数をSupabaseから取得して表示する
+async function loadKeepaPage(page) {
+  const caption = document.getElementById("keepaListCaption");
+  caption.textContent = "読み込み中...";
+  const from = (page - 1) * KEEPA_PAGE_SIZE;
+  try {
+    const { data, count, error } = await supabaseClient
+      .from("keepa情報")
+      .select(KEEPA_COLUMNS.join(","), { count: "exact" })
+      .order("売れ筋ポイント", { ascending: false, nullsFirst: false })
+      .order("ASIN")
+      .range(from, from + KEEPA_PAGE_SIZE - 1);
+    if (error) throw error;
+    keepaPage = page;
+    keepaTotal = count ?? 0;
+    keepaLoaded = true;
+    renderKeepaTable(data);
+    renderKeepaPagers();
+    const shownTo = from + data.length;
+    caption.textContent = keepaTotal
+      ? `全${keepaTotal.toLocaleString()}件中 ${(from + 1).toLocaleString()}〜${shownTo.toLocaleString()}件目（売れ筋ポイントの高い順）`
+      : "データがありません";
+  } catch (e) {
+    caption.textContent = "読み込みに失敗しました: " + e.message;
+    console.error(e);
+  }
+}
+
+// 1セル分の表示文字列を作る（数値は3桁区切り、日時は日本時間、空欄は空文字）
+function keepaCellText(col, v) {
+  if (v == null || v === "") return "";
+  if (KEEPA_DATE_COLUMNS.has(col)) return new Date(v).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+  if (typeof v === "number") return v.toLocaleString();
+  return String(v);
+}
+
+// 見出し行と100件分の行を描画する
+function renderKeepaTable(rows) {
+  const head = document.getElementById("keepaHeadRow");
+  if (!head.children.length) {
+    head.innerHTML = KEEPA_COLUMNS.map((c) => `<th>${escapeKeepa(c)}</th>`).join("");
+  }
+  document.getElementById("keepaListBody").innerHTML = rows.map((r) => {
+    const tds = KEEPA_COLUMNS.map((c) => {
+      const text = escapeKeepa(keepaCellText(c, r[c]));
+      const cls = KEEPA_LONG_COLUMNS.has(c) ? "keepa-long" : KEEPA_TEXT_COLUMNS.has(c) ? "keepa-text" : "";
+      // 省略表示されるセルは、マウスを乗せると全文が出るようtitleを付ける
+      const title = KEEPA_LONG_COLUMNS.has(c) && text ? ` title="${text}"` : "";
+      return `<td class="${cls}"${title}>${text}</td>`;
+    }).join("");
+    return `<tr>${tds}</tr>`;
+  }).join("");
+  // ページを切り替えたら表の先頭に戻す
+  document.querySelector(".keepa-table-wrap").scrollTop = 0;
+}
+
+// HTMLとして解釈されないよう文字を置き換える
+function escapeKeepa(s) {
+  return String(s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+// 表の上下にページ送り（最初・前へ・ページ番号入力・次へ・最後）を描画する
+function renderKeepaPagers() {
+  const last = Math.max(1, Math.ceil(keepaTotal / KEEPA_PAGE_SIZE));
+  for (const id of ["keepaPagerTop", "keepaPagerBottom"]) {
+    const el = document.getElementById(id);
+    el.innerHTML = `
+      <button type="button" class="detail-button" data-go="1" ${keepaPage <= 1 ? "disabled" : ""}>最初</button>
+      <button type="button" class="detail-button" data-go="${keepaPage - 1}" ${keepaPage <= 1 ? "disabled" : ""}>前へ</button>
+      <span><input type="number" min="1" max="${last}" value="${keepaPage}"> / ${last.toLocaleString()} ページ</span>
+      <button type="button" class="detail-button" data-go="${keepaPage + 1}" ${keepaPage >= last ? "disabled" : ""}>次へ</button>
+      <button type="button" class="detail-button" data-go="${last}" ${keepaPage >= last ? "disabled" : ""}>最後</button>`;
+    el.querySelectorAll("button[data-go]").forEach((b) => {
+      b.addEventListener("click", () => loadKeepaPage(Number(b.dataset.go)));
+    });
+    // ページ番号を入力してEnterでそのページへ移動（範囲外は最初/最後に丸める）
+    el.querySelector("input").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const p = Math.min(last, Math.max(1, parseInt(e.target.value, 10) || 1));
+      loadKeepaPage(p);
+    });
+  }
 }
 
 // チェックボックス付きプルダウン（仕入先・表示タイプ共通）の開閉とチェック変更を配線する
@@ -2117,6 +2277,7 @@ supabaseClient.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_IN" && !dashboardLoaded) showDashboard();
   if (event === "SIGNED_OUT") {
     dashboardLoaded = false;
+    keepaLoaded = false;  // 売れ筋タブも次回ログイン後に読み込み直す
     showLoginScreen();
   }
 });

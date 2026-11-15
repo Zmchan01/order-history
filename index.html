@@ -394,6 +394,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 /* 検索ボタンは目立つよう塗りつぶし */
 .keepa-search-button { background: var(--amazon); color: #fff; border-color: var(--amazon); font-weight: 600; }
 .keepa-search-button:hover { background: color-mix(in srgb, var(--amazon) 85%, #000); }
+/* 絞り込み項目の「?」マーク：カーソルを合わせる（スマホはタップ）と、その項目を使う理由を吹き出しで表示 */
+.keepa-help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 4px; border-radius: 50%; background: var(--sub); color: var(--surface); font-size: 0.68rem; font-weight: 700; cursor: help; vertical-align: middle; }
+.keepa-help:hover::after,
+.keepa-help:focus::after { content: attr(data-help); position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: max-content; max-width: 240px; padding: 6px 10px; border-radius: 6px; background: var(--ink); color: var(--surface); font-size: 0.78rem; font-weight: 400; line-height: 1.5; white-space: normal; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); }
 .site-amazon { color: var(--amazon); font-weight: 600; }
 .site-mercari { color: var(--mercari); font-weight: 600; }
 
@@ -1924,6 +1928,25 @@ const KEEPA_FILTERS = [
     ors: (v) => (v === "all" ? null : `新品_出品者数.is.null,新品_出品者数.lte.${Number(v)}`) },
 ];
 
+// 絞り込み項目ごとの「?」マークに出す説明（id→理由）。範囲指定は下限側のidに付ける
+const KEEPA_FILTER_HELP = {
+  kfKeyword: "ASIN・商品名・メーカー・型番・JANで探す基本の検索",
+  kfStock: "自社在庫がある商品だけ見たいとき",
+  kfScoreMin: "出品して売れるかの総合判断",
+  kfProfitMin: "定価で仕入れたときの儲け",
+  kfBuyMin: "今が仕入れ時かの総合判断",
+  kfBuyProfitMin: "今の価格で仕入れたときの儲け",
+  kfCategory: "ジャンルを絞る",
+  kfDrops30: "売れる頻度（大ランキング下降回数_30日）",
+  kfSellers: "ライバルの多さ",
+};
+// 項目名＋「?」マーク（説明がある項目だけ）のHTMLを作る
+function keepaFilterLabel(f) {
+  const help = KEEPA_FILTER_HELP[f.id];
+  const mark = help ? `<span class="keepa-help" tabindex="0" data-help="${escapeKeepa(help)}">?</span>` : "";
+  return `<span class="filter-label">${escapeKeepa(f.label)}${mark}</span>`;
+}
+
 // 検索ボタンを押した時点の絞り込み条件（id→選択値）。ページ送りもこの条件で取得する
 // （プルダウンを変えただけでは通信しない。検索ボタンでまとめて1回だけ取得する）
 let keepaAppliedFilters = {};
@@ -1935,7 +1958,7 @@ function renderKeepaFilters() {
   for (const f of KEEPA_FILTERS) {
     // テキスト入力の項目（キーワード・小ランキング名）は入力欄、それ以外はプルダウン
     if (f.type === "text") {
-      html += `<label class="filter-field"><span class="filter-label">${escapeKeepa(f.label)}</span>` +
+      html += `<label class="filter-field">${keepaFilterLabel(f)}` +
         `<input type="text" class="keepa-text-input" id="${f.id}" placeholder="${escapeKeepa(f.placeholder || "")}"></label>`;
       continue;
     }
@@ -1943,11 +1966,11 @@ function renderKeepaFilters() {
       .map(([v, t]) => `<option value="${escapeKeepa(v)}">${escapeKeepa(t)}</option>`).join("")}</select>`;
     if (f.range === "start") {
       // 範囲指定の下限側：ラベルと下限・上限のプルダウンを1つの枠にまとめる
-      html += `<div class="filter-field"><span class="filter-label">${escapeKeepa(f.label)}</span>${select}`;
+      html += `<div class="filter-field">${keepaFilterLabel(f)}${select}`;
     } else if (f.range === "end") {
       html += `<span>〜</span>${select}</div>`;
     } else {
-      html += `<label class="filter-field"><span class="filter-label">${escapeKeepa(f.label)}</span>${select}</label>`;
+      html += `<label class="filter-field">${keepaFilterLabel(f)}${select}</label>`;
     }
   }
   // 並び替え・表示件数（絞り込み条件ではないため KEEPA_FILTERS とは別に置く）
@@ -1973,6 +1996,10 @@ function renderKeepaFilters() {
   // 入力欄でEnterを押したときも検索する
   row.querySelectorAll(".keepa-text-input").forEach((el) => {
     el.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+  });
+  // 「?」マークのクリック（タップ）でプルダウンが反応しないようにし、吹き出しだけ出す
+  row.querySelectorAll(".keepa-help").forEach((el) => {
+    el.addEventListener("click", (e) => { e.preventDefault(); el.focus(); });
   });
   // リセット：プルダウンを「全て」、入力欄を空、並び替えを初期、表示件数を30件に戻すだけ
   // （通信はしない。検索ボタンで反映）

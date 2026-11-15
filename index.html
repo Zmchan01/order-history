@@ -416,6 +416,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 /* 検索ボタンは目立つよう塗りつぶし */
 .keepa-search-button { background: var(--amazon); color: #fff; border-color: var(--amazon); font-weight: 600; }
 .keepa-search-button:hover { background: color-mix(in srgb, var(--amazon) 85%, #000); }
+/* 在庫数の絞り込みのチェックボックス（トイセンター・自社） */
+.keepa-check { display: inline-flex; align-items: center; gap: 3px; font-size: 0.85rem; white-space: nowrap; cursor: pointer; }
 /* メーカー絞り込み：ボタンを押すと下に検索欄つきのチェックボックス一覧を開く */
 .keepa-maker-field { position: relative; }
 .keepa-maker-button { font-family: inherit; font-size: 0.85rem; padding: 6px 8px; min-width: 120px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; }
@@ -1900,9 +1902,10 @@ const KEEPA_DETAIL_GROUPS = [
     ["梱包サイズ", ["梱包サイズ"]],
     ["製品サイズ", ["製品サイズ"]],
   ]],
-  // 在庫：stockdbの更新在庫数（keepa情報_在庫数反映.py で反映）
+  // 在庫：stockdbの更新在庫数・在庫数_自社、最新TCファイルの在庫（keepa情報_在庫数反映.py で毎日19:30に反映）
   ["在庫", [
     ["在庫数", ["在庫数"]],
+    ["自社/トイセンター", ["在庫数_自社", "在庫数_TC"]],
   ]],
   // 売れ行き・利益：取得のたびに変わる判定・集計
   ["売れ行き・利益", [
@@ -2034,9 +2037,12 @@ const KEEPA_FILTERS = [
       const list = names.map((s) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",");
       return `メーカー名_日.in.(${list}),and(メーカー名_日.is.null,メーカー名_英.in.(${list}))`;
     } },
-  { id: "kfStock", label: "在庫状況", options: [["all", "全て"], ["in", "アリ"], ["out", "ナシ"]],
-    apply: (q, v) => (v === "in" ? q.gte("在庫数", 1) : q),
-    ors: (v) => (v === "out" ? "在庫数.is.null,在庫数.eq.0" : null) },
+  // 在庫数：トイセンター・自社のチェックボックス。チェックしたところのどれかに在庫が1以上ある商品を出す
+  // （値はチェックしたカラム名の「,」区切り。何もチェックしなければ絞り込まない）
+  { id: "kfStock", label: "在庫数", type: "checks",
+    checks: [["在庫数_TC", "トイセンター"], ["在庫数_自社", "自社"]],
+    apply: (q) => q,
+    ors: (v) => (v === "all" ? null : v.split(",").map((c) => `${c}.gte.1`).join(",")) },
   // 売れ筋ポイント・想定利益は「下限〜上限」の2つのプルダウンで範囲指定
   { id: "kfScoreMin", label: "売れ筋ポイント", range: "start",
     options: [["all", "下限なし"], ...SCORE_STEPS.map((n) => [String(n), `${n}点`])],
@@ -2070,7 +2076,7 @@ const KEEPA_FILTERS = [
 const KEEPA_FILTER_HELP = {
   kfKeyword: "ASIN・商品名・メーカー・型番・JANで探す基本の検索",
   kfMaker: "メーカーを検索して、チェックで複数選んで絞る",
-  kfStock: "自社在庫がある商品だけ見たいとき",
+  kfStock: "チェックしたところ（トイセンター・自社）のどれかに在庫がある商品だけ見たいとき",
   kfScoreMin: "出品して売れるかの総合判断",
   kfProfitMin: "定価で仕入れたときの儲け",
   kfBuyMin: "今が仕入れ時かの総合判断",
@@ -2210,6 +2216,13 @@ function renderKeepaFilters() {
         `<input type="text" class="keepa-text-input" id="${f.id}" placeholder="${escapeKeepa(f.placeholder || "")}"></label>`;
       continue;
     }
+    // チェックボックスの欄（在庫数）：チェックの状態を hidden の入力欄に「,」区切りで持つ
+    if (f.type === "checks") {
+      html += `<div class="filter-field">${keepaFilterLabel(f)}<input type="hidden" id="${f.id}" value="">` +
+        f.checks.map(([v, t]) => `<label class="keepa-check"><input type="checkbox" data-for="${f.id}" value="${escapeKeepa(v)}">` +
+          `${escapeKeepa(t)}</label>`).join("") + `</div>`;
+      continue;
+    }
     // メーカーは検索つきチェックボックスの欄
     if (f.type === "maker") {
       html += keepaMakerFieldHtml(f);
@@ -2240,6 +2253,14 @@ function renderKeepaFilters() {
     loadKeepaPage(1);
   });
   wireKeepaMaker();
+  // チェックボックスを付け外ししたら、チェックしている値を hidden の入力欄に「,」区切りで入れる
+  row.querySelectorAll("input[type=checkbox][data-for]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const id = cb.dataset.for;
+      document.getElementById(id).value = [...row.querySelectorAll(`input[data-for="${id}"]:checked`)]
+        .map((x) => x.value).join(",");
+    });
+  });
   // 検索：今のプルダウン・入力欄の値を条件として確定し、1ページ目から取得する
   const runSearch = () => {
     keepaAppliedFilters = {};
@@ -2264,8 +2285,10 @@ function renderKeepaFilters() {
   document.getElementById("kfReset").addEventListener("click", () => {
     for (const f of KEEPA_FILTERS) {
       if (f.type === "maker") continue;
-      document.getElementById(f.id).value = f.type === "text" ? "" : "all";
+      document.getElementById(f.id).value = f.type === "text" || f.type === "checks" ? "" : "all";
     }
+    // チェックボックス（在庫数）も外す
+    row.querySelectorAll("input[type=checkbox][data-for]").forEach((cb) => { cb.checked = false; });
     // メーカーの選択も外す
     keepaMakerSelected.clear();
     syncKeepaMakerSelected();
@@ -2297,9 +2320,10 @@ async function loadKeepaPage(page) {
   if (!document.getElementById("kfStock")) renderKeepaFilters();
   const from = (page - 1) * keepaPageSize;
   try {
+    // ビュー keepa情報_在庫込み（keepa情報＋別テーブル keepa情報_在庫 の在庫数_自社・在庫数_TC）から読む
     let q = supabaseClient
-      .from("keepa情報")
-      .select(KEEPA_COLUMNS.join(","), { count: "exact" });
+      .from("keepa情報_在庫込み")
+      .select([...KEEPA_COLUMNS, "在庫数_自社", "在庫数_TC"].join(","), { count: "exact" });
     q = applyKeepaFilters(q);
     // 並び替え：▲▼で指定した順（先に選んだ項目ほど優先）。空欄は常に最後、全部同じ値ならASIN順
     for (const s of keepaSorts) q = q.order(keepaSortDbCol(s.col), { ascending: s.asc, nullsFirst: false });

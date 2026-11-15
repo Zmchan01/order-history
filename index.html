@@ -345,6 +345,16 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   font-size: 0.95rem;
   word-break: break-all;
 }
+/* 売れ筋タブのポップアップの見出し（基本・大ランキング等）：横幅いっぱいに1行で表示 */
+#modalContent dt.keepa-detail-head {
+  grid-column: 1 / -1;
+  margin-top: 10px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink);
+}
 .row-purchased td:not(.cell-flag) { color: var(--sub); }
 
 .panel .caption { font-size: 0.82rem; color: var(--sub); margin: 0 0 14px; }
@@ -1825,11 +1835,66 @@ const KEEPA_COLUMNS = [
   "配送サイズ", "配送料金", "梱包サイズ", "製品サイズ", "初回取得日時", "最新取得日時",
   "値崩れなし", "定価超え",
 ];
-// 画面に出す列：メーカー名_日・メーカー名_英は「メーカー名」1列にまとめる
-// （日本語名があれば日本語名、無ければ英語名を表示）
-const KEEPA_DISPLAY_COLUMNS = KEEPA_COLUMNS
-  .filter((c) => c !== "メーカー名_英")
-  .map((c) => (c === "メーカー名_日" ? "メーカー名" : c));
+// 一覧の表に出す列（必要最低限。絞り込み項目と、利益の根拠になる価格）
+// メーカー名は メーカー名_日・メーカー名_英 を1列にまとめたもの（日本語名があれば日本語名、無ければ英語名）
+// それ以外の項目は、行をクリックしたときのポップアップに表示する（取得は KEEPA_COLUMNS 全体で1回）
+const KEEPA_DISPLAY_COLUMNS = [
+  "ASIN", "在庫数", "売れ筋ポイント", "想定利益", "買い時ポイント", "買い時利益",
+  "タイトル", "メーカー名", "JAN", "大ランキング名", "大ランキング下降回数_30日", "新品_出品者数",
+  "参考価格", "新品_最安値_平均30日", "新品_最安値", "新品_最安値_平均90日",
+];
+// ポップアップの期間つき項目を「名前 7日／30日／90日」の3行に展開する
+// fn は期間の接尾辞（_7日 と _平均7日）を受け取り、その行に並べるカラム名の配列を返す
+const kPeriod = (label, fn) => ["7日", "30日", "90日"].map((d, i) => [`${label} ${d}`, fn(KP[i], KA[i])]);
+// ポップアップの表示内容：[見出し, [[項目名, [カラム, ...]], ...]]。カラムが複数のときは「値/値」で表示
+const KEEPA_DETAIL_GROUPS = [
+  ["基本", [
+    ["売れ筋パターン", ["売れ筋パターン"]],
+    ["想定利益率(%)", ["想定利益率"]],
+    ["型番", ["型番"]],
+    ["発売日", ["発売日"]],
+    ["月間販売数/全期間平均", ["月間販売数", "月間販売数_全期間平均"]],
+  ]],
+  ["大ランキング", [
+    ...kPeriod("順位 最大/最小", (p) => ["大ランキング順位最大" + p, "大ランキング順位最小" + p]),
+    ...kPeriod("売れた回数", (p) => ["大ランキング下降回数" + p]),
+    ...kPeriod("高値で売れた回数", (p) => ["高値時ランキング下降回数" + p]),
+  ]],
+  ["小ランキング", [
+    ["小ランキング名", ["小ランキング名"]],
+    ...kPeriod("順位 最大/最小", (p) => ["小ランキング順位最大" + p, "小ランキング順位最小" + p]),
+  ]],
+  ["Amazon本体", [
+    ["Amazon価格", ["Amazon価格"]],
+    ...kPeriod("在庫切れ率(%)/回数", (p) => ["Amazon在庫切れ率" + p, "Amazon在庫切れ回数" + p]),
+    ...kPeriod("最大/最小価格", (p) => ["Amazon最大価格" + p, "Amazon最小価格" + p]),
+  ]],
+  ["トップカート", [
+    ["トップカート価格", ["トップカート価格"]],
+    ...kPeriod("平均価格", (p, a) => ["トップカート価格" + a]),
+    ...kPeriod("最大/最小価格", (p) => ["トップカート最大価格" + p, "トップカート最小価格" + p]),
+    ...kPeriod("高値期間割合(%)", (p) => ["高値期間割合" + p]),
+  ]],
+  ["新品", [
+    ["出品者数/最安値", ["新品_出品者数", "新品_最安値"]],
+    ...kPeriod("出品者数 平均", (p, a) => ["新品_出品者数" + a]),
+    ...kPeriod("最安値 平均", (p, a) => ["新品_最安値" + a]),
+    ...kPeriod("最大/最小価格", (p) => ["新品_最大価格" + p, "新品_最小価格" + p]),
+  ]],
+  ["中古", [
+    ["出品者数/最安値", ["中古_出品者数", "中古_最安値"]],
+    ...kPeriod("出品者数 平均", (p, a) => ["中古_出品者数" + a]),
+    ...kPeriod("最安値 平均", (p, a) => ["中古_最安値" + a]),
+    ...kPeriod("最大/最小価格", (p) => ["中古_最大価格" + p, "中古_最小価格" + p]),
+  ]],
+  ["配送・サイズ", [
+    ["配送サイズ/配送料金", ["配送サイズ", "配送料金"]],
+    ["梱包サイズ", ["梱包サイズ"]],
+    ["製品サイズ", ["製品サイズ"]],
+  ]],
+  ["判定", [["値崩れなし/定価超え", ["値崩れなし", "定価超え"]]]],
+  ["取得日時", [["初回/最新", ["初回取得日時", "最新取得日時"]]]],
+];
 // 表示列の値を行から取り出す（メーカー名だけは日→英の順で採用）
 function keepaValue(r, col) {
   if (col === "メーカー名") return r["メーカー名_日"] || r["メーカー名_英"];
@@ -2071,13 +2136,55 @@ function keepaCellText(col, v) {
   return String(v);
 }
 
-// 見出し行と100件分の行を描画する
+// 今表示しているページの行（ポップアップ表示用。再取得はしない）
+let keepaRows = [];
+
+// 行をクリックしたとき、一覧に出していない項目をポップアップ（detailModal）に表示する
+function showKeepaDetailModal(r) {
+  document.getElementById("modalTitle").textContent = r["タイトル"] ?? r["ASIN"];
+  const img = document.getElementById("modalImage");
+  img.onerror = null;
+  img.removeAttribute("src");
+  img.hidden = true;
+  // 1つの値の表示（true/false は ○/×、空欄は -）
+  const fmt = (col) => {
+    const v = r[col];
+    if (typeof v === "boolean") return v ? "○" : "×";
+    return keepaCellText(col, v) || "-";
+  };
+  let html = `<dt>ASIN</dt><dd>${escapeKeepa(r["ASIN"])}</dd>`;
+  for (const [title, items] of KEEPA_DETAIL_GROUPS) {
+    html += `<dt class="keepa-detail-head">${escapeKeepa(title)}</dt>`;
+    for (const [label, cols] of items) {
+      html += `<dt>${escapeKeepa(label)}</dt><dd>${escapeKeepa(cols.map(fmt).join(" / "))}</dd>`;
+    }
+  }
+  document.getElementById("modalContent").innerHTML = html;
+  document.getElementById("researchChartWrap").hidden = true;
+  document.getElementById("detailModal").hidden = false;
+}
+
+// 一覧のクリックを1回だけ登録する（ASINのリンクのクリックはポップアップを開かない）
+let keepaDetailWired = false;
+function wireKeepaDetail() {
+  if (keepaDetailWired) return;
+  keepaDetailWired = true;
+  document.getElementById("keepaListBody").addEventListener("click", (e) => {
+    if (e.target.closest("a")) return;
+    const tr = e.target.closest("tr[data-idx]");
+    if (tr) showKeepaDetailModal(keepaRows[Number(tr.dataset.idx)]);
+  });
+}
+
+// 見出し行と1ページ分の行を描画する
 function renderKeepaTable(rows) {
+  keepaRows = rows;
+  wireKeepaDetail();
   const head = document.getElementById("keepaHeadRow");
   if (!head.children.length) {
     head.innerHTML = KEEPA_DISPLAY_COLUMNS.map((c) => `<th>${escapeKeepa(c)}</th>`).join("");
   }
-  document.getElementById("keepaListBody").innerHTML = rows.map((r) => {
+  document.getElementById("keepaListBody").innerHTML = rows.map((r, idx) => {
     const tds = KEEPA_DISPLAY_COLUMNS.map((c) => {
       const text = escapeKeepa(keepaCellText(c, keepaValue(r, c)));
       const cls = KEEPA_LONG_COLUMNS.has(c) ? "keepa-long" : KEEPA_TEXT_COLUMNS.has(c) ? "keepa-text" : "";
@@ -2090,7 +2197,7 @@ function renderKeepaTable(rows) {
       }
       return `<td class="${cls}"${title}>${text}</td>`;
     }).join("");
-    return `<tr>${tds}</tr>`;
+    return `<tr class="row-clickable" data-idx="${idx}">${tds}</tr>`;
   }).join("");
   // ページを切り替えたら表の先頭に戻す
   document.querySelector(".keepa-table-wrap").scrollTop = 0;

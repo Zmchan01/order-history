@@ -345,6 +345,10 @@ header p { margin: 0; color: var(--sub); font-size: 0.9rem; }
   font-size: 0.95rem;
   word-break: break-all;
 }
+/* 売れ筋タブのポップアップの差（+/−）は小さく薄い文字で添える */
+#modalContent .keepa-diff { font-size: 0.8rem; color: var(--sub); }
+/* 売れ筋タブの一覧で、想定利益・買い時利益がマイナス（赤字）のときは赤字で表示 */
+.keepa-table td.keepa-minus { color: var(--mercari); font-weight: 600; }
 /* 売れ筋タブのポップアップの見出し（基本・大ランキング等）：横幅いっぱいに1行で表示 */
 #modalContent dt.keepa-detail-head {
   grid-column: 1 / -1;
@@ -1845,8 +1849,16 @@ const KEEPA_DISPLAY_COLUMNS = [
 ];
 // ポップアップの期間つき項目を「名前 7日／30日／90日」の3行に展開する
 // fn は期間の接尾辞（_7日 と _平均7日）を受け取り、その行に並べるカラム名の配列を返す
-const kPeriod = (label, fn) => ["7日", "30日", "90日"].map((d, i) => [`${label} ${d}`, fn(KP[i], KA[i])]);
-// ポップアップの表示内容：[見出し, [[項目名, [カラム, ...]], ...]]。カラムが複数のときは「値/値」で表示
+// 30日・90日の行には、7日（最新）の値を基準にした差（+/−）を付ける
+// count=true（回数のデータ）は期間が長いほど多くなるため、7日あたりに換算してから比べる
+const KEEPA_PERIOD_DAYS = [7, 30, 90];
+const kPeriod = (label, fn, count = false) => ["7日", "30日", "90日"].map((d, i) => [
+  `${label} ${d}`, fn(KP[i], KA[i]),
+  i === 0 ? null : { base: fn(KP[0], KA[0]), scale: count ? 7 / KEEPA_PERIOD_DAYS[i] : 1 },
+]);
+// 今の値と平均との差（今 − 平均）だけを出す行。now＝今の値のカラム、avgs＝比べる平均のカラム
+const kNowDiff = (label, now, avgs) => [label, [], { now, avgs }];
+// ポップアップの表示内容：[見出し, [[項目名, [カラム, ...], 比較設定], ...]]。カラムが複数のときは「値/値」で表示
 const KEEPA_DETAIL_GROUPS = [
   ["基本", [
     ["売れ筋パターン", ["売れ筋パターン"]],
@@ -1857,7 +1869,7 @@ const KEEPA_DETAIL_GROUPS = [
   ]],
   ["大ランキング", [
     ...kPeriod("順位 最大/最小", (p) => ["大ランキング順位最大" + p, "大ランキング順位最小" + p]),
-    ...kPeriod("売れた回数/高値で売れた回数", (p) => ["大ランキング下降回数" + p, "高値時ランキング下降回数" + p]),
+    ...kPeriod("売れた回数/高値で売れた回数", (p) => ["大ランキング下降回数" + p, "高値時ランキング下降回数" + p], true),
   ]],
   ["小ランキング", [
     ["小ランキング名", ["小ランキング名"]],
@@ -1865,24 +1877,30 @@ const KEEPA_DETAIL_GROUPS = [
   ]],
   ["Amazon本体", [
     ["Amazon価格", ["Amazon価格"]],
-    ...kPeriod("在庫切れ率(%)/回数", (p) => ["Amazon在庫切れ率" + p, "Amazon在庫切れ回数" + p]),
+    // 在庫切れ率(%)は割合なのでそのまま、在庫切れ回数は回数なので別の行で7日あたりに換算して比べる
+    ...kPeriod("在庫切れ率(%)", (p) => ["Amazon在庫切れ率" + p]),
+    ...kPeriod("在庫切れ回数", (p) => ["Amazon在庫切れ回数" + p], true),
     ...kPeriod("最大/最小価格", (p) => ["Amazon最大価格" + p, "Amazon最小価格" + p]),
   ]],
   ["トップカート", [
     ["トップカート価格", ["トップカート価格"]],
     ...kPeriod("平均価格", (p, a) => ["トップカート価格" + a]),
+    kNowDiff("今と平均の差 30日/90日", "トップカート価格", ["トップカート価格_平均30日", "トップカート価格_平均90日"]),
     ...kPeriod("最大/最小価格", (p) => ["トップカート最大価格" + p, "トップカート最小価格" + p]),
     ...kPeriod("高値期間割合(%)", (p) => ["高値期間割合" + p]),
   ]],
   ["新品", [
     ["出品者数/最安値", ["新品_出品者数", "新品_最安値"]],
     ...kPeriod("出品者数 平均", (p, a) => ["新品_出品者数" + a]),
+    kNowDiff("出品者数 今と平均7日の差", "新品_出品者数", ["新品_出品者数_平均7日"]),
     ...kPeriod("最安値 平均", (p, a) => ["新品_最安値" + a]),
+    kNowDiff("最安値 今と平均の差 30日/90日", "新品_最安値", ["新品_最安値_平均30日", "新品_最安値_平均90日"]),
     ...kPeriod("最大/最小価格", (p) => ["新品_最大価格" + p, "新品_最小価格" + p]),
   ]],
   ["中古", [
     ["出品者数/最安値", ["中古_出品者数", "中古_最安値"]],
     ...kPeriod("出品者数 平均", (p, a) => ["中古_出品者数" + a]),
+    kNowDiff("出品者数 今と平均7日の差", "中古_出品者数", ["中古_出品者数_平均7日"]),
     ...kPeriod("最安値 平均", (p, a) => ["中古_最安値" + a]),
     ...kPeriod("最大/最小価格", (p) => ["中古_最大価格" + p, "中古_最小価格" + p]),
   ]],
@@ -2151,11 +2169,41 @@ function showKeepaDetailModal(r) {
     if (typeof v === "boolean") return v ? "○" : "×";
     return keepaCellText(col, v) || "-";
   };
+  // 差の表示（+1,234 / −1,234 / ±0）。小数は1桁、整数は3桁区切り
+  const signed = (d) => {
+    const n = Math.round(d * 10) / 10;
+    if (n === 0) return "±0";
+    const s = Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 1 });
+    return (n > 0 ? "+" : "−") + s;
+  };
+  const diffSpan = (text) => ` <span class="keepa-diff">(${escapeKeepa(text)})</span>`;
+  // 1つの値＋7日基準の差。scale≠1（回数）は7日あたりに換算した値と差を出す
+  const withDiff = (col, baseCol, scale) => {
+    const text = escapeKeepa(fmt(col));
+    const v = r[col], b = r[baseCol];
+    if (typeof v !== "number" || typeof b !== "number") return text;
+    const scaled = v * scale;
+    if (scale === 1) return text + diffSpan(signed(scaled - b));
+    const per7 = (Math.round(scaled * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
+    return text + diffSpan(`7日換算${per7} ${signed(scaled - b)}`);
+  };
   let html = `<dt>ASIN</dt><dd>${escapeKeepa(r["ASIN"])}</dd>`;
   for (const [title, items] of KEEPA_DETAIL_GROUPS) {
     html += `<dt class="keepa-detail-head">${escapeKeepa(title)}</dt>`;
-    for (const [label, cols] of items) {
-      html += `<dt>${escapeKeepa(label)}</dt><dd>${escapeKeepa(cols.map(fmt).join(" / "))}</dd>`;
+    for (const [label, cols, opt] of items) {
+      let dd;
+      if (opt && opt.now) {
+        // 今の値 − 平均（どちらかが空欄なら -）
+        dd = opt.avgs.map((a) => {
+          const n = r[opt.now], v = r[a];
+          return typeof n === "number" && typeof v === "number" ? signed(n - v) : "-";
+        }).map(escapeKeepa).join(" / ");
+      } else if (opt) {
+        dd = cols.map((c, j) => withDiff(c, opt.base[j], opt.scale)).join(" / ");
+      } else {
+        dd = escapeKeepa(cols.map(fmt).join(" / "));
+      }
+      html += `<dt>${escapeKeepa(label)}</dt><dd>${dd}</dd>`;
     }
   }
   document.getElementById("modalContent").innerHTML = html;
@@ -2186,7 +2234,9 @@ function renderKeepaTable(rows) {
   document.getElementById("keepaListBody").innerHTML = rows.map((r, idx) => {
     const tds = KEEPA_DISPLAY_COLUMNS.map((c) => {
       const text = escapeKeepa(keepaCellText(c, keepaValue(r, c)));
-      const cls = KEEPA_LONG_COLUMNS.has(c) ? "keepa-long" : KEEPA_TEXT_COLUMNS.has(c) ? "keepa-text" : "";
+      let cls = KEEPA_LONG_COLUMNS.has(c) ? "keepa-long" : KEEPA_TEXT_COLUMNS.has(c) ? "keepa-text" : "";
+      // 想定利益・買い時利益がマイナスなら赤字表示
+      if ((c === "想定利益" || c === "買い時利益") && r[c] < 0) cls += " keepa-minus";
       // 省略表示されるセルは、マウスを乗せると全文が出るようtitleを付ける
       const title = KEEPA_LONG_COLUMNS.has(c) && text ? ` title="${text}"` : "";
       // ASINはAmazonの商品ページへのリンクにする（新しいタブで開く）

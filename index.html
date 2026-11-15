@@ -1851,11 +1851,6 @@ const KEEPA_CATEGORIES = [
 ];
 const SCORE_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 const PROFIT_STEPS = [0, 500, 1000, 1500, 2000, 3000, 5000, 10000];
-// 参考価格・販売価格の範囲の選択肢（円）
-const PRICE_STEPS = [1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000];
-const PERCENT_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-// 配送サイズの選択肢（keepa_配送料金.py の判定結果の表記に合わせる）
-const SHIP_SIZES = ["レターパック", "60", "80", "100", "140", "160", "170", "180", "200", "220", "240", "260", "サイズ不明"];
 // テキスト入力の値を、PostgRESTの条件文字列に入れても壊れないよう記号を取り除く
 function cleanKeyword(v) {
   return v.replace(/["\\*%,()]/g, " ").trim();
@@ -1886,8 +1881,8 @@ const KEEPA_SORTS = [
 // 検索ボタンを押した時点の並び替え
 let keepaSort = "score";
 
-// 発売日の年の選択肢：今年〜2000年（新しい順。今年の分は毎年自動で増える）
-const RELEASE_YEARS = Array.from({ length: new Date().getFullYear() - 1999 }, (_, i) => new Date().getFullYear() - i);
+// 絞り込み項目（必要最低限：キーワード・在庫・売れ筋ポイント・想定利益・買い時ポイント・買い時利益
+// ・大ランキング名・売れた回数(30日)・新品出品者数）
 const KEEPA_FILTERS = [
   // キーワード：ASIN・タイトル・メーカー名・型番・JANのどれかに一部一致（テキスト入力）
   { id: "kfKeyword", label: "キーワード", type: "text", placeholder: "ASIN・タイトル・メーカー・型番・JAN",
@@ -1900,9 +1895,6 @@ const KEEPA_FILTERS = [
   { id: "kfStock", label: "在庫状況", options: [["all", "全て"], ["in", "アリ"], ["out", "ナシ"]],
     apply: (q, v) => (v === "in" ? q.gte("在庫数", 1) : q),
     ors: (v) => (v === "out" ? "在庫数.is.null,在庫数.eq.0" : null) },
-  { id: "kfPattern", label: "売れ筋パターン",
-    options: [["all", "全て"], ["Amazon不在", "Amazon不在"], ["Amazon在庫切れあり", "Amazon在庫切れあり"], ["Amazon常駐", "Amazon常駐"]],
-    apply: (q, v) => (v === "all" ? q : q.eq("売れ筋パターン", v)) },
   // 売れ筋ポイント・想定利益は「下限〜上限」の2つのプルダウンで範囲指定
   { id: "kfScoreMin", label: "売れ筋ポイント", range: "start",
     options: [["all", "下限なし"], ...SCORE_STEPS.map((n) => [String(n), `${n}点`])],
@@ -1919,64 +1911,17 @@ const KEEPA_FILTERS = [
   // 買い時ポイント・買い時利益：今の安い価格で仕入れ、90日平均の価格に戻ったら売る想定の点数と利益
   ...rangeFilters("kfBuy", "買い時ポイント", "買い時ポイント", SCORE_STEPS, (n) => `${n}点`),
   ...rangeFilters("kfBuyProfit", "買い時利益", "買い時利益", PROFIT_STEPS, (n) => `${n.toLocaleString()}円`),
-  // 発売日：年の範囲指定（下限年の1月1日以降〜上限年の12月31日以前）。指定すると発売日が空欄の商品は除かれる
-  { id: "kfReleaseMin", label: "発売日", range: "start",
-    options: [["all", "下限なし"], ...RELEASE_YEARS.map((y) => [String(y), `${y}年`])],
-    apply: (q, v) => (v === "all" ? q : q.gte("発売日", `${v}-01-01`)) },
-  { id: "kfReleaseMax", label: "〜", range: "end",
-    options: [["all", "上限なし"], ...RELEASE_YEARS.map((y) => [String(y), `${y}年`])],
-    apply: (q, v) => (v === "all" ? q : q.lte("発売日", `${v}-12-31`)) },
   { id: "kfCategory", label: "大ランキング名",
     options: [["all", "全て"], ...KEEPA_CATEGORIES.map((c) => [c, c])],
     apply: (q, v) => (v === "all" ? q : q.eq("大ランキング名", v)) },
-  // 小ランキング名：種類が多いためテキスト入力で一部一致
-  { id: "kfSubCategory", label: "小ランキング名", type: "text", placeholder: "例：人形、プラモデル",
-    apply: (q, v) => {
-      const kw = v === "all" ? "" : cleanKeyword(v);
-      return kw ? q.ilike("小ランキング名", `%${kw}%`) : q;
-    } },
-  ...rangeFilters("kfList", "参考価格(仕入れ)", "参考価格", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
-  ...rangeFilters("kfSell", "販売価格(30日平均)", "新品_最安値_平均30日", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
-  { id: "kfMonthly", label: "月間販売数",
-    options: [["all", "全て"], ["100", "100個以上"], ["50", "50個以上"], ["30", "30個以上"], ["10", "10個以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("月間販売数", Number(v))) },
   { id: "kfDrops30", label: "売れた回数(30日)",
     options: [["all", "全て"], ["15", "15回以上"], ["8", "8回以上"], ["4", "4回以上"], ["1", "1回以上"]],
     apply: (q, v) => (v === "all" ? q : q.gte("大ランキング下降回数_30日", Number(v))) },
-  { id: "kfDrops90", label: "売れた回数(90日)",
-    options: [["all", "全て"], ["45", "45回以上"], ["24", "24回以上"], ["12", "12回以上"], ["3", "3回以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("大ランキング下降回数_90日", Number(v))) },
-  { id: "kfDrops7", label: "直近7日の売れ", options: [["all", "全て"], ["yes", "売れあり"], ["no", "売れなし"]],
-    apply: (q, v) => (v === "yes" ? q.gte("大ランキング下降回数_7日", 1) : v === "no" ? q.not("初回取得日時", "is", null) : q),
-    ors: (v) => (v === "no" ? "大ランキング下降回数_7日.is.null,大ランキング下降回数_7日.eq.0" : null) },
-  { id: "kfHigh30", label: "高値で売れた回数(30日)",
-    options: [["all", "全て"], ["5", "5回以上"], ["3", "3回以上"], ["1", "1回以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("高値時ランキング下降回数_30日", Number(v))) },
-  { id: "kfHighRate30", label: "高値期間割合(30日)",
-    options: [["all", "全て"], ["80", "80%以上"], ["50", "50%以上"], ["30", "30%以上"], ["10", "10%以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("高値期間割合_30日", Number(v))) },
-  { id: "kfNoDrop", label: "値崩れなし", options: [["all", "全て"], ["yes", "値崩れなしのみ"]],
-    apply: (q, v) => (v === "yes" ? q.eq("値崩れなし", true) : q) },
-  { id: "kfOverList", label: "定価超え", options: [["all", "全て"], ["yes", "定価超えで売れているもののみ"]],
-    apply: (q, v) => (v === "yes" ? q.eq("定価超え", true) : q) },
+  // 新品出品者数：空欄（出品者が居ない）も「0人」扱いで含める。未取得の行は除く
   { id: "kfSellers", label: "新品出品者数",
     options: [["all", "全て"], ["0", "0人"], ["3", "3人以下"], ["5", "5人以下"], ["10", "10人以下"]],
     apply: (q, v) => (v === "all" ? q : q.not("初回取得日時", "is", null)),
     ors: (v) => (v === "all" ? null : `新品_出品者数.is.null,新品_出品者数.lte.${Number(v)}`) },
-  { id: "kfUsedSellers", label: "中古出品者数",
-    options: [["all", "全て"], ["0", "0人"], ["3", "3人以下"], ["5", "5人以下"], ["10", "10人以下"]],
-    apply: (q, v) => (v === "all" ? q : q.not("初回取得日時", "is", null)),
-    ors: (v) => (v === "all" ? null : `中古_出品者数.is.null,中古_出品者数.lte.${Number(v)}`) },
-  { id: "kfAmazon", label: "Amazon本体(現在)", options: [["all", "全て"], ["none", "出品なし"], ["sell", "出品あり"]],
-    apply: (q, v) => (v === "none" ? q.is("Amazon価格", null).not("初回取得日時", "is", null)
-      : v === "sell" ? q.not("Amazon価格", "is", null) : q) },
-  { id: "kfRank", label: "ランキング(7日最高)",
-    options: [["all", "全て"], ["10000", "1万位以内"], ["50000", "5万位以内"], ["100000", "10万位以内"]],
-    apply: (q, v) => (v === "all" ? q : q.lte("大ランキング順位最小_7日", Number(v))) },
-  ...rangeFilters("kfOos90", "Amazon在庫切れ率(90日)", "Amazon在庫切れ率_90日", PERCENT_STEPS, (n) => `${n}%`),
-  { id: "kfShipSize", label: "配送サイズ",
-    options: [["all", "全て"], ...SHIP_SIZES.map((s) => [s, /^\d+$/.test(s) ? `${s}サイズ` : s])],
-    apply: (q, v) => (v === "all" ? q : q.eq("配送サイズ", v)) },
 ];
 
 // 検索ボタンを押した時点の絞り込み条件（id→選択値）。ページ送りもこの条件で取得する

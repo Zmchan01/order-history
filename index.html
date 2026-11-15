@@ -1973,8 +1973,9 @@ function rangeFilters(idBase, label, column, steps, unitText) {
 }
 // 並び替え：一覧の各項目名の ▲（昇順）／▼（降順）ボタンで複数指定できる（[{col: 表示列名, asc: 昇順か}, ...]）
 // 先に選んだ項目ほど優先（1番目で並べ、同じ値なら2番目、それも同じなら3番目…）
-// 初期は売れ筋ポイントの降順（高い順）のみ。検索ボタンを押しても並び替えはそのまま
-const KEEPA_DEFAULT_SORTS = [{ col: "売れ筋ポイント", asc: false }];
+// 初期はランキングの良い順（大ランキング順位最小_7日＝直近7日で一番良かった順位の昇順）のみ
+// 検索ボタンを押しても並び替えはそのまま
+const KEEPA_DEFAULT_SORTS = [{ col: "大ランキング順位最小_7日", asc: true }];
 let keepaSorts = KEEPA_DEFAULT_SORTS.map((s) => ({ ...s }));
 // 表示列名 → DBのカラム（メーカー名は日本語名のカラムで並べる）
 const keepaSortDbCol = (col) => (col === "メーカー名" ? "メーカー名_日" : col);
@@ -2215,7 +2216,7 @@ function renderKeepaFilters() {
   html += `<button type="button" class="detail-button" id="kfReset">リセット</button>`;
   html += `<button type="button" class="detail-button" id="kfSortClear">並び替え解除</button>`;
   row.innerHTML = html;
-  // 並び替え解除：初期（売れ筋ポイントの降順のみ）に戻してすぐ取得する（既に初期なら通信しない）
+  // 並び替え解除：初期（ランキングの良い順のみ）に戻してすぐ取得する（既に初期なら通信しない）
   document.getElementById("kfSortClear").addEventListener("click", () => {
     if (keepaSortIsDefault()) return;
     keepaSorts = KEEPA_DEFAULT_SORTS.map((s) => ({ ...s }));

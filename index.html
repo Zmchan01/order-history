@@ -411,6 +411,18 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 /* 検索ボタンは目立つよう塗りつぶし */
 .keepa-search-button { background: var(--amazon); color: #fff; border-color: var(--amazon); font-weight: 600; }
 .keepa-search-button:hover { background: color-mix(in srgb, var(--amazon) 85%, #000); }
+/* メーカー絞り込み：ボタンを押すと下に検索欄つきのチェックボックス一覧を開く */
+.keepa-maker-field { position: relative; }
+.keepa-maker-button { font-family: inherit; font-size: 0.85rem; padding: 6px 8px; min-width: 120px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.keepa-maker-panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; width: 300px; max-width: calc(100vw - 32px); padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); }
+.keepa-maker-search { box-sizing: border-box; width: 100%; font-family: inherit; font-size: 0.85rem; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.keepa-maker-actions { display: flex; align-items: center; justify-content: space-between; margin: 6px 0; font-size: 0.78rem; color: var(--sub); }
+.keepa-maker-list { max-height: 300px; overflow-y: auto; font-size: 0.85rem; }
+.keepa-maker-item { display: flex; align-items: center; gap: 6px; padding: 3px 2px; cursor: pointer; }
+.keepa-maker-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.keepa-maker-item span:first-of-type { flex: 1; word-break: break-all; }
+.keepa-maker-num { font-size: 0.75rem; color: var(--sub); }
+.keepa-maker-note { padding: 6px 2px; font-size: 0.78rem; color: var(--sub); }
 /* 絞り込み項目の「?」マーク：カーソルを合わせる（スマホはタップ）と、その項目を使う理由を吹き出しで表示 */
 .keepa-help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 4px; border-radius: 50%; background: var(--sub); color: var(--surface); font-size: 0.68rem; font-weight: 700; cursor: help; vertical-align: middle; }
 .keepa-help:hover::after,
@@ -1993,6 +2005,18 @@ const KEEPA_FILTERS = [
       if (!kw) return null;
       return ["ASIN", "タイトル", "メーカー名_日", "メーカー名_英", "型番", "JAN"].map((c) => `${c}.ilike."*${kw}*"`).join(",");
     } },
+  // メーカー：検索つきチェックボックスで複数選択（値は選んだメーカー名のJSON配列）
+  // 表示上のメーカー名＝日本語名があれば日本語名、無ければ英語名、なので条件も同じ考え方にする
+  { id: "kfMaker", label: "メーカー", type: "maker",
+    apply: (q) => q,
+    ors: (v) => {
+      if (v === "all") return null;
+      const names = JSON.parse(v);
+      if (!names.length) return null;
+      // PostgRESTの in.() に入れるため、各名前を "..." で囲む（中の " と \ はエスケープ）
+      const list = names.map((s) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",");
+      return `メーカー名_日.in.(${list}),and(メーカー名_日.is.null,メーカー名_英.in.(${list}))`;
+    } },
   { id: "kfStock", label: "在庫状況", options: [["all", "全て"], ["in", "アリ"], ["out", "ナシ"]],
     apply: (q, v) => (v === "in" ? q.gte("在庫数", 1) : q),
     ors: (v) => (v === "out" ? "在庫数.is.null,在庫数.eq.0" : null) },
@@ -2028,6 +2052,7 @@ const KEEPA_FILTERS = [
 // 絞り込み項目ごとの「?」マークに出す説明（id→理由）。範囲指定は下限側のidに付ける
 const KEEPA_FILTER_HELP = {
   kfKeyword: "ASIN・商品名・メーカー・型番・JANで探す基本の検索",
+  kfMaker: "メーカーを検索して、チェックで複数選んで絞る",
   kfStock: "自社在庫がある商品だけ見たいとき",
   kfScoreMin: "出品して売れるかの総合判断",
   kfProfitMin: "定価で仕入れたときの儲け",
@@ -2044,6 +2069,115 @@ function keepaFilterLabel(f) {
   return `<span class="filter-label">${escapeKeepa(f.label)}${mark}</span>`;
 }
 
+// ■メーカー絞り込み（検索つきチェックボックス）
+// メーカー一覧（[{メーカー名, 件数}]）は「keepa情報_メーカー一覧」ビューから、初めて欄を開いたときに1回だけ取得
+let keepaMakers = null;
+const keepaMakerSelected = new Set();
+const KEEPA_MAKER_MAX_SELECT = 50;   // 条件文が長くなりすぎないよう、選べる数の上限
+const KEEPA_MAKER_MAX_SHOW = 200;    // 一覧に一度に出す数（それ以上は検索で絞ってもらう）
+
+// メーカー欄のHTML（ボタン＋開閉するパネル）。選択値は hidden の入力欄にJSONで持つ
+function keepaMakerFieldHtml(f) {
+  return `<div class="filter-field keepa-maker-field">${keepaFilterLabel(f)}` +
+    `<button type="button" class="keepa-maker-button" id="kfMakerButton">全て</button>` +
+    `<input type="hidden" id="${f.id}" value="">` +
+    `<div class="keepa-maker-panel" id="kfMakerPanel" hidden>` +
+    `<input type="text" class="keepa-maker-search" id="kfMakerSearch" placeholder="メーカー名で検索">` +
+    `<div class="keepa-maker-actions"><span id="kfMakerCount"></span>` +
+    `<button type="button" class="detail-button" id="kfMakerClear">選択解除</button></div>` +
+    `<div class="keepa-maker-list" id="kfMakerList">読み込み中...</div></div></div>`;
+}
+
+// メーカー一覧をビューから取得する（1回の取得上限が1000行のため、1000行ずつ分けて取得）
+async function loadKeepaMakers() {
+  const all = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabaseClient
+      .from("keepa情報_メーカー一覧")
+      .select("メーカー名,件数")
+      .order("件数", { ascending: false })
+      .order("メーカー名")
+      .range(from, from + 999);
+    if (error) throw error;
+    all.push(...data);
+    if (data.length < 1000) break;
+  }
+  keepaMakers = all;
+}
+
+// 選択状態を hidden の値・ボタンの表示・選択数に反映する
+function syncKeepaMakerSelected() {
+  const names = [...keepaMakerSelected];
+  document.getElementById("kfMaker").value = names.length ? JSON.stringify(names) : "";
+  document.getElementById("kfMakerButton").textContent =
+    names.length === 0 ? "全て" : names.length === 1 ? names[0] : `${names[0]} 他${names.length - 1}件`;
+  document.getElementById("kfMakerCount").textContent = `${names.length}件選択中`;
+}
+
+// 検索欄の文字で一覧を絞って描画する（選択中のメーカーは常に先頭に出す。通信はしない）
+function renderKeepaMakerList() {
+  const box = document.getElementById("kfMakerList");
+  if (!keepaMakers) return;
+  const kw = document.getElementById("kfMakerSearch").value.trim().toLowerCase();
+  const selected = keepaMakers.filter((m) => keepaMakerSelected.has(m["メーカー名"]));
+  const hits = keepaMakers.filter((m) => !keepaMakerSelected.has(m["メーカー名"]) &&
+    (!kw || m["メーカー名"].toLowerCase().includes(kw)));
+  const shown = [...selected, ...hits.slice(0, KEEPA_MAKER_MAX_SHOW)];
+  const more = hits.length - Math.min(hits.length, KEEPA_MAKER_MAX_SHOW);
+  box.innerHTML = shown.map((m, i) => {
+    const name = escapeKeepa(m["メーカー名"]);
+    const checked = keepaMakerSelected.has(m["メーカー名"]) ? " checked" : "";
+    return `<label class="keepa-maker-item"><input type="checkbox" data-i="${i}"${checked}>` +
+      `<span>${name}</span><span class="keepa-maker-num">${m["件数"].toLocaleString()}</span></label>`;
+  }).join("") + (shown.length ? "" : `<div class="keepa-maker-note">該当するメーカーがありません</div>`)
+    + (more > 0 ? `<div class="keepa-maker-note">ほか${more.toLocaleString()}件（検索で絞ってください）</div>` : "");
+  // チェックの付け外し：選択に追加・削除して表示を更新
+  box.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const name = shown[Number(cb.dataset.i)]["メーカー名"];
+      if (cb.checked) {
+        if (keepaMakerSelected.size >= KEEPA_MAKER_MAX_SELECT) {
+          cb.checked = false;
+          alert(`メーカーは${KEEPA_MAKER_MAX_SELECT}件まで選べます`);
+          return;
+        }
+        keepaMakerSelected.add(name);
+      } else {
+        keepaMakerSelected.delete(name);
+      }
+      syncKeepaMakerSelected();
+    });
+  });
+}
+
+// メーカー欄の操作（開閉・検索・選択解除・欄の外をクリックで閉じる）を登録する
+function wireKeepaMaker() {
+  const panel = document.getElementById("kfMakerPanel");
+  document.getElementById("kfMakerButton").addEventListener("click", async () => {
+    panel.hidden = !panel.hidden;
+    if (panel.hidden) return;
+    // 開いたときは選択中のメーカーを先頭に並べ直す
+    if (keepaMakers) { renderKeepaMakerList(); return; }
+    try {
+      await loadKeepaMakers();
+      renderKeepaMakerList();
+    } catch (e) {
+      document.getElementById("kfMakerList").textContent = "メーカー一覧の読み込みに失敗しました: " + e.message;
+      console.error(e);
+    }
+  });
+  document.getElementById("kfMakerSearch").addEventListener("input", renderKeepaMakerList);
+  document.getElementById("kfMakerClear").addEventListener("click", () => {
+    keepaMakerSelected.clear();
+    syncKeepaMakerSelected();
+    renderKeepaMakerList();
+  });
+  document.addEventListener("click", (e) => {
+    if (!panel.hidden && !e.target.closest(".keepa-maker-field")) panel.hidden = true;
+  });
+  syncKeepaMakerSelected();
+}
+
 // 検索ボタンを押した時点の絞り込み条件（id→選択値）。ページ送りもこの条件で取得する
 // （プルダウンを変えただけでは通信しない。検索ボタンでまとめて1回だけ取得する）
 let keepaAppliedFilters = {};
@@ -2057,6 +2191,11 @@ function renderKeepaFilters() {
     if (f.type === "text") {
       html += `<label class="filter-field">${keepaFilterLabel(f)}` +
         `<input type="text" class="keepa-text-input" id="${f.id}" placeholder="${escapeKeepa(f.placeholder || "")}"></label>`;
+      continue;
+    }
+    // メーカーは検索つきチェックボックスの欄
+    if (f.type === "maker") {
+      html += keepaMakerFieldHtml(f);
       continue;
     }
     const select = `<select id="${f.id}">${f.options
@@ -2078,6 +2217,7 @@ function renderKeepaFilters() {
   html += `<button type="button" class="detail-button keepa-search-button" id="kfSearch">検索</button>`;
   html += `<button type="button" class="detail-button" id="kfReset">リセット</button>`;
   row.innerHTML = html;
+  wireKeepaMaker();
   // 検索：今のプルダウン・入力欄の値を条件として確定し、1ページ目から取得する
   const runSearch = () => {
     keepaAppliedFilters = {};
@@ -2103,7 +2243,14 @@ function renderKeepaFilters() {
   // リセット：プルダウンを「全て」、入力欄を空、並び替えを初期、表示件数を30件に戻すだけ
   // （通信はしない。検索ボタンで反映）
   document.getElementById("kfReset").addEventListener("click", () => {
-    for (const f of KEEPA_FILTERS) document.getElementById(f.id).value = f.type === "text" ? "" : "all";
+    for (const f of KEEPA_FILTERS) {
+      if (f.type === "maker") continue;
+      document.getElementById(f.id).value = f.type === "text" ? "" : "all";
+    }
+    // メーカーの選択も外す
+    keepaMakerSelected.clear();
+    syncKeepaMakerSelected();
+    if (keepaMakers) renderKeepaMakerList();
     document.getElementById("kfSort").value = "score";
     document.getElementById("kfPageSize").value = String(KEEPA_DEFAULT_PAGE_SIZE);
   });

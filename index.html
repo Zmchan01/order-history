@@ -404,6 +404,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .keepa-sort-btn { border: none; background: none; padding: 0 2px; font-size: 0.6rem; line-height: 1.1; color: color-mix(in srgb, var(--sub) 50%, transparent); cursor: pointer; }
 .keepa-sort-btn:hover { color: var(--sub); }
 .keepa-sort-btn.is-active { color: var(--amazon); }
+/* 並び替えの優先順位の番号（①②③…） */
+.keepa-sort-num { color: var(--amazon); font-size: 0.8rem; font-weight: 700; }
 .keepa-table td.keepa-text { text-align: left; }
 .keepa-table td.keepa-long { text-align: left; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 .keepa-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; font-size: 0.85rem; }
@@ -1969,16 +1971,27 @@ function rangeFilters(idBase, label, column, steps, unitText) {
       apply: (q, v) => (v === "all" ? q : q.lte(column, Number(v))) },
   ];
 }
-// 並び替え：一覧の各項目名の ▲（昇順）／▼（降順）ボタンで指定する（{col: 表示列名, asc: 昇順か}）
-// 初期は売れ筋ポイントの降順（高い順）。検索ボタンを押しても並び替えはそのまま
-const KEEPA_DEFAULT_SORT = { col: "売れ筋ポイント", asc: false };
-let keepaHeaderSort = { ...KEEPA_DEFAULT_SORT };
-// 今の並び替え（DBのカラム・昇順か・表示列名・説明文）を返す
-function keepaCurrentSort() {
-  const { col, asc } = keepaHeaderSort;
-  // メーカー名は日本語名のカラムで並べる
-  return { dbCol: col === "メーカー名" ? "メーカー名_日" : col, asc, col, label: `${col}の${asc ? "昇順" : "降順"}` };
+// 並び替え：一覧の各項目名の ▲（昇順）／▼（降順）ボタンで複数指定できる（[{col: 表示列名, asc: 昇順か}, ...]）
+// 先に選んだ項目ほど優先（1番目で並べ、同じ値なら2番目、それも同じなら3番目…）
+// 初期は売れ筋ポイントの降順（高い順）のみ。検索ボタンを押しても並び替えはそのまま
+const KEEPA_DEFAULT_SORTS = [{ col: "売れ筋ポイント", asc: false }];
+let keepaSorts = KEEPA_DEFAULT_SORTS.map((s) => ({ ...s }));
+// 表示列名 → DBのカラム（メーカー名は日本語名のカラムで並べる）
+const keepaSortDbCol = (col) => (col === "メーカー名" ? "メーカー名_日" : col);
+// 並び替えの説明文（例：売れ筋ポイントの降順 → 想定利益の降順）
+const keepaSortLabel = () => keepaSorts.map((s) => `${s.col}の${s.asc ? "昇順" : "降順"}`).join(" → ");
+// ▲▼ボタンを押したときの並び替えの更新
+// ・まだ入っていない項目 → 最後（一番低い優先度）に追加
+// ・入っている項目で反対のボタン → 優先順位はそのままで昇順⇔降順を切り替え
+// ・入っている項目で同じボタン → その項目を外す（全部外れたら初期に戻す）
+function toggleKeepaSort(col, asc) {
+  const i = keepaSorts.findIndex((s) => s.col === col);
+  if (i < 0) keepaSorts.push({ col, asc });
+  else if (keepaSorts[i].asc !== asc) keepaSorts[i].asc = asc;
+  else keepaSorts.splice(i, 1);
+  if (!keepaSorts.length) keepaSorts = KEEPA_DEFAULT_SORTS.map((s) => ({ ...s }));
 }
+const keepaSortIsDefault = () => JSON.stringify(keepaSorts) === JSON.stringify(KEEPA_DEFAULT_SORTS);
 
 // 絞り込み項目（必要最低限：キーワード・在庫・売れ筋ポイント・想定利益・買い時ポイント・買い時利益
 // ・大ランキング名・売れた回数(30日)・新品出品者数）
@@ -2200,7 +2213,14 @@ function renderKeepaFilters() {
     .map((n) => `<option value="${n}"${n === keepaPageSize ? " selected" : ""}>${n}件</option>`).join("")}</select></label>`;
   html += `<button type="button" class="detail-button keepa-search-button" id="kfSearch">検索</button>`;
   html += `<button type="button" class="detail-button" id="kfReset">リセット</button>`;
+  html += `<button type="button" class="detail-button" id="kfSortClear">並び替え解除</button>`;
   row.innerHTML = html;
+  // 並び替え解除：初期（売れ筋ポイントの降順のみ）に戻してすぐ取得する（既に初期なら通信しない）
+  document.getElementById("kfSortClear").addEventListener("click", () => {
+    if (keepaSortIsDefault()) return;
+    keepaSorts = KEEPA_DEFAULT_SORTS.map((s) => ({ ...s }));
+    loadKeepaPage(1);
+  });
   wireKeepaMaker();
   // 検索：今のプルダウン・入力欄の値を条件として確定し、1ページ目から取得する
   const runSearch = () => {
@@ -2263,11 +2283,10 @@ async function loadKeepaPage(page) {
       .from("keepa情報")
       .select(KEEPA_COLUMNS.join(","), { count: "exact" });
     q = applyKeepaFilters(q);
-    // 検索ボタンで確定した並び替え（空欄は常に最後。同じ値どうしはASIN順）
-    // 並び替え：項目名クリックの指定があればそれ、無ければプルダウンの指定
-    const { dbCol: sortCol, asc: sortAsc, label: sortLabel } = keepaCurrentSort();
+    // 並び替え：▲▼で指定した順（先に選んだ項目ほど優先）。空欄は常に最後、全部同じ値ならASIN順
+    for (const s of keepaSorts) q = q.order(keepaSortDbCol(s.col), { ascending: s.asc, nullsFirst: false });
+    const sortLabel = keepaSortLabel();
     const { data, count, error } = await q
-      .order(sortCol, { ascending: sortAsc, nullsFirst: false })
       .order("ASIN")
       .range(from, from + keepaPageSize - 1);
     if (error) throw error;
@@ -2361,14 +2380,14 @@ let keepaDetailWired = false;
 function wireKeepaDetail() {
   if (keepaDetailWired) return;
   keepaDetailWired = true;
-  // ▲▼ボタン：その列の昇順・降順で並び替え、今の絞り込み条件のまま1ページ目を取得（同じ指定なら通信しない）
+  // ▲▼ボタン：並び替えに追加・切り替え・解除し、今の絞り込み条件のまま1ページ目を取得
   document.getElementById("keepaHeadRow").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-col]");
     if (!b) return;
-    const next = { col: b.dataset.col, asc: b.dataset.asc === "1" };
-    if (next.col === keepaHeaderSort.col && next.asc === keepaHeaderSort.asc) return;
-    keepaHeaderSort = next;
-    loadKeepaPage(1);
+    const before = JSON.stringify(keepaSorts);
+    toggleKeepaSort(b.dataset.col, b.dataset.asc === "1");
+    // 初期の1項目だけを外そうとした場合など、結果が変わらなければ通信しない
+    if (JSON.stringify(keepaSorts) !== before) loadKeepaPage(1);
   });
   document.getElementById("keepaListBody").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
@@ -2381,16 +2400,21 @@ function wireKeepaDetail() {
 function renderKeepaTable(rows) {
   keepaRows = rows;
   wireKeepaDetail();
-  // 項目名：それぞれに ▲（昇順）▼（降順）ボタンを付ける。今並び替えている方のボタンは色付きにする
+  // 項目名：それぞれに ▲（昇順）▼（降順）ボタンを付ける。並び替えに入っている項目は
+  // 選んでいる方のボタンを色付きにし、優先順位の番号（①②③…）を付ける
   const head = document.getElementById("keepaHeadRow");
-  const sort = keepaCurrentSort();
+  const NUMS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯";
   head.innerHTML = KEEPA_DISPLAY_COLUMNS.map((c) => {
     const col = escapeKeepa(c);
+    const i = keepaSorts.findIndex((s) => s.col === c);
     const btn = (asc, mark, tip) => {
-      const on = c === sort.col && sort.asc === asc ? " is-active" : "";
+      const on = i >= 0 && keepaSorts[i].asc === asc ? " is-active" : "";
       return `<button type="button" class="keepa-sort-btn${on}" data-col="${col}" data-asc="${asc ? 1 : 0}" title="${tip}">${mark}</button>`;
     };
-    return `<th><span class="keepa-th">${col}<span class="keepa-sort-btns">${btn(true, "▲", "昇順（小さい順）")}${btn(false, "▼", "降順（大きい順）")}</span></span></th>`;
+    const num = i >= 0 ? `<span class="keepa-sort-num" title="並び替えの優先順位">${NUMS[i]}</span>` : "";
+    return `<th><span class="keepa-th">${col}${num}<span class="keepa-sort-btns">` +
+      `${btn(true, "▲", "昇順（小さい順）：並び替えに追加。もう一度押すと外す")}` +
+      `${btn(false, "▼", "降順（大きい順）：並び替えに追加。もう一度押すと外す")}</span></span></th>`;
   }).join("");
   document.getElementById("keepaListBody").innerHTML = rows.map((r, idx) => {
     const tds = KEEPA_DISPLAY_COLUMNS.map((c) => {

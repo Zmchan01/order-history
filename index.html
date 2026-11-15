@@ -1862,9 +1862,10 @@ const KEEPA_COLUMNS = [
 // 一覧の表に出す列（必要最低限。絞り込み項目と、利益の根拠になる価格）
 // メーカー名は メーカー名_日・メーカー名_英 を1列にまとめたもの（日本語名があれば日本語名、無ければ英語名）
 // それ以外の項目は、行をクリックしたときのポップアップに表示する（取得は KEEPA_COLUMNS 全体で1回）
+// タイトルは先頭（横スクロールしても固定）でAmazonの商品ページへのリンク。ASINはポップアップに表示
 const KEEPA_DISPLAY_COLUMNS = [
-  "ASIN", "在庫数", "売れ筋ポイント", "想定利益", "買い時ポイント", "買い時利益",
-  "タイトル", "メーカー名", "JAN", "大ランキング名", "大ランキング下降回数_30日", "新品_出品者数",
+  "タイトル", "在庫数", "売れ筋ポイント", "想定利益", "買い時ポイント", "買い時利益",
+  "メーカー名", "JAN", "大ランキング名", "大ランキング下降回数_30日", "新品_出品者数",
   "参考価格", "新品_最安値",
 ];
 // 一覧の項目名の短い表示（横幅を減らすため。元の名前は項目名にカーソルを合わせると出る）
@@ -2324,6 +2325,13 @@ function keepaCellText(col, v) {
   return String(v);
 }
 
+// Amazonの商品ページへのリンク（新しいタブで開く）
+// rel="noreferrer" と referrerpolicy="no-referrer" で、Amazon側にこのサイトのURL（リンク元）を送らない
+function keepaAmazonLink(asin, innerHtml) {
+  const href = `https://www.amazon.co.jp/dp/${encodeURIComponent(asin)}`;
+  return `<a href="${href}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">${innerHtml}</a>`;
+}
+
 // 今表示しているページの行（ポップアップ表示用。再取得はしない）
 let keepaRows = [];
 
@@ -2358,7 +2366,8 @@ function showKeepaDetailModal(r) {
     const per7 = (Math.round(scaled * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
     return text + diffSpan(`7日換算${per7} ${signed(scaled - b)}`);
   };
-  let html = `<dt>ASIN</dt><dd>${escapeKeepa(r["ASIN"])}</dd>`;
+  // ASIN（Amazonの商品ページへのリンク。リンク元は送らない）
+  let html = `<dt>ASIN</dt><dd>${keepaAmazonLink(r["ASIN"], escapeKeepa(r["ASIN"]))}</dd>`;
   for (const [title, items] of KEEPA_DETAIL_GROUPS) {
     html += `<dt class="keepa-detail-head">${escapeKeepa(title)}</dt>`;
     for (const [label, cols, opt] of items) {
@@ -2434,10 +2443,9 @@ function renderKeepaTable(rows) {
       if ((c === "想定利益" || c === "買い時利益") && r[c] < 0) cls += " keepa-minus";
       // 省略表示されるセルは、マウスを乗せると全文が出るようtitleを付ける
       const title = KEEPA_LONG_COLUMNS.has(c) && text ? ` title="${text}"` : "";
-      // ASINはAmazonの商品ページへのリンクにする（新しいタブで開く）
-      if (c === "ASIN" && text) {
-        const href = `https://www.amazon.co.jp/dp/${encodeURIComponent(r["ASIN"])}`;
-        return `<td class="${cls}"><a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a></td>`;
+      // タイトルはAmazonの商品ページへのリンクにする（新しいタブで開く。リンク元を送らない）
+      if (c === "タイトル" && r["ASIN"]) {
+        return `<td class="${cls}"${title}>${keepaAmazonLink(r["ASIN"], text || escapeKeepa(r["ASIN"]))}</td>`;
       }
       return `<td class="${cls}"${title}>${text}</td>`;
     }).join("");

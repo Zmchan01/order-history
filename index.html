@@ -407,7 +407,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 /* 並び替えの優先順位の番号（①②③…） */
 .keepa-sort-num { color: var(--amazon); font-size: 0.8rem; font-weight: 700; }
 .keepa-table td.keepa-text { text-align: left; }
-.keepa-table td.keepa-long { text-align: left; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.keepa-table td.keepa-long { text-align: left; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .keepa-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; font-size: 0.85rem; }
 .keepa-pager input { width: 70px; font-family: inherit; font-size: 0.85rem; padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
 .keepa-pager .detail-button:disabled { opacity: 0.4; cursor: default; }
@@ -1867,6 +1867,12 @@ const KEEPA_DISPLAY_COLUMNS = [
   "タイトル", "メーカー名", "JAN", "大ランキング名", "大ランキング下降回数_30日", "新品_出品者数",
   "参考価格", "新品_最安値_平均30日", "新品_最安値", "新品_最安値_平均90日",
 ];
+// 一覧の項目名の短い表示（横幅を減らすため。元の名前は項目名にカーソルを合わせると出る）
+const KEEPA_SHORT_LABELS = {
+  "在庫数": "在庫", "売れ筋ポイント": "売筋P", "想定利益": "想定益", "買い時ポイント": "買時P", "買い時利益": "買時益",
+  "メーカー名": "メーカー", "大ランキング下降回数_30日": "売回30", "新品_出品者数": "新品数",
+  "参考価格": "定価", "新品_最安値": "最安値", "新品_最安値_平均30日": "平均30", "新品_最安値_平均90日": "平均90",
+};
 // ポップアップの期間つき項目を「名前 7日／30日／90日」の3行に展開する
 // fn は期間の接尾辞（_7日 と _平均7日）を受け取り、その行に並べるカラム名の配列を返す
 // 30日・90日の行には、7日（最新）の値を基準にした差（+/−）を付ける
@@ -2413,7 +2419,10 @@ function renderKeepaTable(rows) {
       return `<button type="button" class="keepa-sort-btn${on}" data-col="${col}" data-asc="${asc ? 1 : 0}" title="${tip}">${mark}</button>`;
     };
     const num = i >= 0 ? `<span class="keepa-sort-num" title="並び替えの優先順位">${NUMS[i]}</span>` : "";
-    return `<th><span class="keepa-th">${col}${num}<span class="keepa-sort-btns">` +
+    // 項目名は短い表示（あれば）にし、元の名前をツールチップで出す
+    const short = KEEPA_SHORT_LABELS[c];
+    const name = short ? `<span title="${col}">${escapeKeepa(short)}</span>` : col;
+    return `<th><span class="keepa-th">${name}${num}<span class="keepa-sort-btns">` +
       `${btn(true, "▲", "昇順（小さい順）：並び替えに追加。もう一度押すと外す")}` +
       `${btn(false, "▼", "降順（大きい順）：並び替えに追加。もう一度押すと外す")}</span></span></th>`;
   }).join("");

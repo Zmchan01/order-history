@@ -2479,71 +2479,79 @@ function ensureKeepaFilterModal() {
   wrap.addEventListener("click", (e) => { if (e.target === wrap) wrap.hidden = true; });
 }
 
-// フィルター設定のポップアップの中身を描画する
+// フィルター設定のポップアップ内で選んでいる状態（下書き）。「送信」を押すまで絞り込み欄には反映しない
+// pattern＝選んでいるフィルター名、keys＝チェックしている項目のkey。ポップアップを開くたびに今の状態から作り直す
+let keepaFmDraft = null;
+function resetKeepaFmDraft() {
+  keepaFmDraft = { pattern: keepaPatternState.current, keys: new Set(keepaVisibleKeys) };
+}
+// 下書きのkeyを、項目の並び順で返す（保存用）
+const keepaFmDraftKeyList = () => KEEPA_FILTER_GROUPS.map((g) => g.key).filter((k) => keepaFmDraft.keys.has(k));
+
+// フィルター設定のポップアップの中身を描画する（下書きの状態を表示する）
 function renderKeepaFilterModal(status = "") {
+  if (!keepaFmDraft) resetKeepaFmDraft();
   const body = document.getElementById("keepaFilterModalBody");
-  const cur = keepaPatternState.current;
+  const cur = keepaFmDraft.pattern;
   const names = [KEEPA_DEFAULT_PATTERN, ...Object.keys(KEEPA_PRESET_PATTERNS),
     ...Object.keys(keepaPatternState.patterns).filter((n) => !KEEPA_PRESET_PATTERNS[n])];
-  const isDefault = keepaIsFixedPattern(cur);
-  const dirty = keepaPatternDirty();
+  const isFixed = keepaIsFixedPattern(cur);
+  // 選んでいるフィルターの保存内容と、チェックの状態が違うか
+  const dirty = keepaFmDraftKeyList().join(",") !== keepaPatternKeys(cur).join(",");
   body.innerHTML =
     `<h3 class="modal-product-title">フィルター設定</h3>` +
     `<div class="keepa-fm-row"><label class="filter-field"><span class="filter-label">保存したフィルター</span>` +
     `<select id="kfmPattern">${names.map((n) => `<option value="${escapeKeepa(n)}"${n === cur ? " selected" : ""}>` +
       `${escapeKeepa(n)}</option>`).join("")}</select></label>` +
-    `<button type="button" class="detail-button" id="kfmDelete"${isDefault ? " disabled" : ""}>このフィルターを削除</button></div>` +
-    `<p class="caption">チェックを入れた項目だけが、絞り込み欄に表示されます（チェックするとすぐ反映）。</p>` +
+    `<button type="button" class="detail-button" id="kfmDelete"${isFixed ? " disabled" : ""}>このフィルターを削除</button></div>` +
+    `<p class="caption">チェックを入れた項目が絞り込み欄に表示されます。「送信」を押すと反映されます（保存しなくても今回だけ使えます）。</p>` +
     `<div class="keepa-fm-row"><button type="button" class="detail-button" id="kfmAll">すべて選択</button>` +
     `<button type="button" class="detail-button" id="kfmNone">すべて解除</button></div>` +
     // 種類（基本・在庫・点数・利益…）ごとに見出しを付けて並べる
     keepaGroupedChecksHtml(
-      KEEPA_FILTER_GROUPS.map((g) => ({ value: g.key, label: g.label, checked: keepaVisibleKeys.has(g.key), help: keepaHelpMark(g.key) })),
+      KEEPA_FILTER_GROUPS.map((g) => ({ value: g.key, label: g.label, checked: keepaFmDraft.keys.has(g.key), help: keepaHelpMark(g.key) })),
       KEEPA_FILTER_CATEGORIES.map(([t]) => t),
       (key) => (KEEPA_FILTER_CATEGORIES.find(([, keys]) => keys.includes(key)) || ["その他"])[0]) +
     `<div class="keepa-fm-footer"><span class="keepa-fm-status">${escapeKeepa(status || (dirty ? "未保存の変更があります" : ""))}</span>` +
-    `<button type="button" class="detail-button keepa-search-button" id="kfmSave">上書き保存</button>` +
-    `<button type="button" class="detail-button" id="kfmSaveAs">新しいフィルターとして保存</button></div>`;
+    `<button type="button" class="detail-button" id="kfmSave">上書き保存</button>` +
+    `<button type="button" class="detail-button" id="kfmSaveAs">新しいフィルターとして保存</button>` +
+    `<button type="button" class="detail-button keepa-search-button" id="kfmSubmit">送信</button></div>`;
 
-  // チェックの付け外し：表示する項目を切り替えて、絞り込み欄をすぐ描き直す
+  // チェックの付け外し：下書きだけ変える（絞り込み欄は送信まで変えない）
   body.querySelectorAll(".keepa-fm-grid input[type=checkbox]").forEach((cb) => {
     cb.addEventListener("change", () => {
-      if (cb.checked) keepaVisibleKeys.add(cb.value); else keepaVisibleKeys.delete(cb.value);
-      renderKeepaFilters();
+      if (cb.checked) keepaFmDraft.keys.add(cb.value); else keepaFmDraft.keys.delete(cb.value);
       renderKeepaFilterModal();
     });
   });
-  // すべて選択・すべて解除
+  // すべて選択・すべて解除（下書きだけ）
   document.getElementById("kfmAll").addEventListener("click", () => {
-    keepaVisibleKeys = new Set(KEEPA_FILTER_GROUPS.map((g) => g.key));
-    renderKeepaFilters();
+    keepaFmDraft.keys = new Set(KEEPA_FILTER_GROUPS.map((g) => g.key));
     renderKeepaFilterModal();
   });
   document.getElementById("kfmNone").addEventListener("click", () => {
-    keepaVisibleKeys = new Set();
-    renderKeepaFilters();
+    keepaFmDraft.keys = new Set();
     renderKeepaFilterModal();
   });
-  // 保存したフィルターを選ぶ：その表示項目に切り替える（選んだパターンは次回も使う）
+  // 保存したフィルターを選ぶ：そのフィルターの項目にチェックを付け直す（下書きだけ。送信で反映）
   document.getElementById("kfmPattern").addEventListener("change", (e) => {
-    keepaPatternState.current = e.target.value;
-    keepaVisibleKeys = new Set(keepaPatternKeys(keepaPatternState.current));
-    saveKeepaPatternState();
-    renderKeepaFilters();
+    keepaFmDraft.pattern = e.target.value;
+    keepaFmDraft.keys = new Set(keepaPatternKeys(keepaFmDraft.pattern));
     renderKeepaFilterModal();
-    // 固定パターン（売価更新用等）は条件も入れて、そのまま検索する
-    if (applyKeepaPresetValues(keepaPatternState.current)) document.getElementById("kfSearch").click();
   });
-  // 上書き保存：今選んでいるパターンに今の表示項目を保存する（デフォルトは固定なので不可）
+  // 上書き保存：選んでいるフィルターに今のチェック状態を保存する（デフォルト・固定パターンは不可）。反映は送信で
   document.getElementById("kfmSave").addEventListener("click", () => {
-    if (keepaIsFixedPattern(keepaPatternState.current)) {
-      alert(`「${keepaPatternState.current}」は上書きできません。「新しいフィルターとして保存」をお使いください。`);
+    if (keepaIsFixedPattern(keepaFmDraft.pattern)) {
+      alert(`「${keepaFmDraft.pattern}」は上書きできません。「新しいフィルターとして保存」をお使いください。`);
       return;
     }
-    keepaPatternState.patterns[keepaPatternState.current] = keepaVisibleKeyList();
-    if (saveKeepaPatternState()) renderKeepaFilterModal("保存しました");
+    keepaPatternState.patterns[keepaFmDraft.pattern] = keepaFmDraftKeyList();
+    if (saveKeepaPatternState()) {
+      renderKeepaFilters();   // 絞り込み欄のフィルター名の「＊」（未保存の印）を更新するだけ
+      renderKeepaFilterModal("保存しました（「送信」で反映）");
+    }
   });
-  // 新しいフィルターとして保存：名前を付けて保存し、そのパターンを選んだ状態にする
+  // 新しいフィルターとして保存：名前を付けて保存し、そのフィルターを選んだ状態にする。反映は送信で
   document.getElementById("kfmSaveAs").addEventListener("click", () => {
     const name = (prompt("新しいフィルターの名前を入力してください") || "").trim();
     if (!name) return;
@@ -2552,23 +2560,34 @@ function renderKeepaFilterModal(status = "") {
       return;
     }
     if (keepaPatternState.patterns[name] && !confirm(`「${name}」は既にあります。上書きしますか？`)) return;
-    keepaPatternState.patterns[name] = keepaVisibleKeyList();
-    keepaPatternState.current = name;
-    if (saveKeepaPatternState()) {
-      renderKeepaFilters();
-      renderKeepaFilterModal("保存しました");
-    }
+    keepaPatternState.patterns[name] = keepaFmDraftKeyList();
+    keepaFmDraft.pattern = name;
+    if (saveKeepaPatternState()) renderKeepaFilterModal("保存しました（「送信」で反映）");
   });
-  // 削除：今選んでいるパターンを消して、デフォルトに戻す
+  // 削除：選んでいるフィルターを消して、下書きをデフォルトに戻す
+  // （今、絞り込み欄で使っているフィルターを消したときは、表示はそのままで名前だけデフォルトにする）
   document.getElementById("kfmDelete").addEventListener("click", () => {
-    const cur = keepaPatternState.current;
-    if (keepaIsFixedPattern(cur) || !confirm(`「${cur}」を削除しますか？`)) return;
-    delete keepaPatternState.patterns[cur];
-    keepaPatternState.current = KEEPA_DEFAULT_PATTERN;
-    keepaVisibleKeys = new Set(KEEPA_DEFAULT_KEYS);
+    const name = keepaFmDraft.pattern;
+    if (keepaIsFixedPattern(name) || !confirm(`「${name}」を削除しますか？`)) return;
+    delete keepaPatternState.patterns[name];
+    if (keepaPatternState.current === name) keepaPatternState.current = KEEPA_DEFAULT_PATTERN;
+    keepaFmDraft.pattern = KEEPA_DEFAULT_PATTERN;
+    keepaFmDraft.keys = new Set(KEEPA_DEFAULT_KEYS);
     saveKeepaPatternState();
     renderKeepaFilters();
     renderKeepaFilterModal("削除しました");
+  });
+  // 送信：下書き（選んだフィルター・チェックした項目）を絞り込み欄に反映して検索し、ポップアップを閉じる
+  // 固定パターン（売価更新用等）に切り替えたときは、その条件も入れる
+  document.getElementById("kfmSubmit").addEventListener("click", () => {
+    const changed = keepaPatternState.current !== keepaFmDraft.pattern;
+    keepaPatternState.current = keepaFmDraft.pattern;
+    keepaVisibleKeys = new Set(keepaFmDraft.keys);
+    saveKeepaPatternState();
+    renderKeepaFilters();
+    if (changed) applyKeepaPresetValues(keepaPatternState.current);
+    document.getElementById("keepaFilterModal").hidden = true;
+    document.getElementById("kfSearch").click();
   });
   // 「?」マークのクリックでチェックが切り替わらないようにし、吹き出しだけ出す
   body.querySelectorAll(".keepa-help").forEach((el) => {
@@ -2802,6 +2821,7 @@ function renderKeepaFilters() {
   // フィルター設定：ポップアップを開く
   document.getElementById("kfSettings").addEventListener("click", () => {
     ensureKeepaFilterModal();
+    resetKeepaFmDraft();   // 開くたびに、今の絞り込み欄の状態から選び直す（前回送信しなかった変更は捨てる）
     renderKeepaFilterModal();
     document.getElementById("keepaFilterModal").hidden = false;
   });

@@ -416,6 +416,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 /* 検索ボタンは目立つよう塗りつぶし */
 .keepa-search-button { background: var(--amazon); color: #fff; border-color: var(--amazon); font-weight: 600; }
 .keepa-search-button:hover { background: color-mix(in srgb, var(--amazon) 85%, #000); }
+/* 一覧の見出しの右端に置く表示項目設定ボタン */
+.keepa-column-settings { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 /* フィルター設定ボタンと、今選んでいるフィルター名 */
 .keepa-settings-field { align-items: center; }
 .keepa-settings-button { font-weight: 600; }
@@ -707,6 +709,11 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
     <div class="panel-header">
       <h2>売れ筋</h2>
       <p class="caption" id="keepaListCaption"></p>
+      <!-- 表示項目設定：一覧に出す列をチェックで選ぶポップアップを開く（横は今選んでいるパターン名） -->
+      <div class="keepa-column-settings">
+        <button type="button" class="detail-button keepa-settings-button" id="keepaColumnSettings">表示項目設定</button>
+        <span class="keepa-pattern-name" id="keepaColumnPatternName"></span>
+      </div>
     </div>
     <div class="keepa-pager" id="keepaPagerTop"></div>
     <div class="table-wrap keepa-table-wrap">
@@ -1887,6 +1894,173 @@ const KEEPA_SHORT_LABELS = {
   "大ランキング下降回数_30日": "売回30", "新品_出品者数": "新品数",
   "参考価格": "定価", "新品_最安値": "最安値",
 };
+
+// ■表示項目設定（一覧に出す列をチェックで選ぶ）と、その保存パターン
+// 選べる列：タイトル・メーカー名（日/英を1列にまとめたもの）・keepa情報の各カラム・在庫数_自社・在庫数_TC
+// 並び：デフォルトの列を今の順で先頭に、残りは keepa情報 のカラム順
+const KEEPA_COLUMN_CHOICES = (() => {
+  const all = ["タイトル"];
+  for (const c of KEEPA_COLUMNS) {
+    if (c === "タイトル" || c === "メーカー名_英") continue;
+    all.push(c === "メーカー名_日" ? "メーカー名" : c);
+    if (c === "在庫数") all.push("在庫数_自社", "在庫数_TC");
+  }
+  return [...KEEPA_DISPLAY_COLUMNS, ...all.filter((c) => !KEEPA_DISPLAY_COLUMNS.includes(c))];
+})();
+// 「デフォルト」＝今の一覧の11列（コードで固定。上書き・削除はできない）
+const KEEPA_COLUMN_DEFAULT = "デフォルト";
+// 保存したパターン（{patterns: {名前: [列名, ...]}, current: 今選んでいる名前}）はこのブラウザに保存する
+const KEEPA_COLUMN_STORAGE = "keepaColumnPatterns_v1";
+function loadKeepaColumnState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEEPA_COLUMN_STORAGE) || "null");
+    if (s && s.patterns && typeof s.patterns === "object") return s;
+  } catch (e) { /* 読めなければ初期状態 */ }
+  return { patterns: {}, current: KEEPA_COLUMN_DEFAULT };
+}
+function saveKeepaColumnState() {
+  try {
+    localStorage.setItem(KEEPA_COLUMN_STORAGE, JSON.stringify(keepaColumnState));
+    return true;
+  } catch (e) {
+    alert("このブラウザでは保存できませんでした（プライベートモード等）。");
+    return false;
+  }
+}
+let keepaColumnState = loadKeepaColumnState();
+if (keepaColumnState.current !== KEEPA_COLUMN_DEFAULT && !keepaColumnState.patterns[keepaColumnState.current]) {
+  keepaColumnState.current = KEEPA_COLUMN_DEFAULT;
+}
+// パターン名 → 表示する列（今は存在しない列名は除く）
+function keepaColumnPatternCols(name) {
+  const cols = name === KEEPA_COLUMN_DEFAULT ? KEEPA_DISPLAY_COLUMNS : keepaColumnState.patterns[name];
+  return (cols || KEEPA_DISPLAY_COLUMNS).filter((c) => KEEPA_COLUMN_CHOICES.includes(c));
+}
+// 今表示している列（Set）と、それを並び順どおりに並べた配列
+let keepaShownColumns = new Set(keepaColumnPatternCols(keepaColumnState.current));
+const keepaDisplayColumnList = () => KEEPA_COLUMN_CHOICES.filter((c) => keepaShownColumns.has(c));
+// 今の表示が、選んでいるパターンの保存内容と違うか（未保存の変更があるか）
+const keepaColumnDirty = () =>
+  keepaDisplayColumnList().join(",") !== keepaColumnPatternCols(keepaColumnState.current).join(",");
+// 一覧の見出しの横に、今選んでいるパターン名を出す（未保存の変更があれば＊）
+function updateKeepaColumnPatternName() {
+  const el = document.getElementById("keepaColumnPatternName");
+  if (el) el.textContent = keepaColumnState.current + (keepaColumnDirty() ? "＊" : "");
+}
+// 列を変えたら、取得済みの行で一覧を描き直す（通信はしない）
+function refreshKeepaColumns() {
+  updateKeepaColumnPatternName();
+  if (keepaLoaded) renderKeepaTable(keepaRows);
+}
+
+// 表示項目設定のポップアップ（初めて開くときに1回だけ作る）
+function ensureKeepaColumnModal() {
+  if (document.getElementById("keepaColumnModal")) return;
+  const wrap = document.createElement("div");
+  wrap.className = "modal-overlay";
+  wrap.id = "keepaColumnModal";
+  wrap.hidden = true;
+  wrap.innerHTML = `<div class="modal-box modal-box-wide">` +
+    `<button type="button" class="modal-close" id="keepaColumnModalClose" aria-label="閉じる">×</button>` +
+    `<div class="modal-scroll" id="keepaColumnModalBody"></div></div>`;
+  document.body.appendChild(wrap);
+  // ×ボタン・ポップアップの外側クリックで閉じる
+  document.getElementById("keepaColumnModalClose").addEventListener("click", () => { wrap.hidden = true; });
+  wrap.addEventListener("click", (e) => { if (e.target === wrap) wrap.hidden = true; });
+}
+
+// 表示項目設定のポップアップの中身を描画する
+function renderKeepaColumnModal(status = "") {
+  const body = document.getElementById("keepaColumnModalBody");
+  const cur = keepaColumnState.current;
+  const names = [KEEPA_COLUMN_DEFAULT, ...Object.keys(keepaColumnState.patterns)];
+  const isDefault = cur === KEEPA_COLUMN_DEFAULT;
+  // チェックボックスの表示名：短い表示がある列は「短い表示（元の名前）」
+  const label = (c) => (KEEPA_SHORT_LABELS[c] ? `${KEEPA_SHORT_LABELS[c]}（${c}）` : c);
+  body.innerHTML =
+    `<h3 class="modal-product-title">表示項目設定</h3>` +
+    `<div class="keepa-fm-row"><label class="filter-field"><span class="filter-label">保存した表示項目</span>` +
+    `<select id="kcmPattern">${names.map((n) => `<option value="${escapeKeepa(n)}"${n === cur ? " selected" : ""}>` +
+      `${escapeKeepa(n)}</option>`).join("")}</select></label>` +
+    `<button type="button" class="detail-button" id="kcmDelete"${isDefault ? " disabled" : ""}>この表示項目を削除</button></div>` +
+    `<p class="caption">チェックを入れた項目だけが一覧に表示されます（チェックするとすぐ反映。通信はしません）。</p>` +
+    `<div class="keepa-fm-row"><button type="button" class="detail-button" id="kcmAll">すべて選択</button>` +
+    `<button type="button" class="detail-button" id="kcmNone">すべて解除</button></div>` +
+    `<div class="keepa-fm-grid">${KEEPA_COLUMN_CHOICES.map((c) =>
+      `<label class="keepa-fm-item"><input type="checkbox" value="${escapeKeepa(c)}"${keepaShownColumns.has(c) ? " checked" : ""}>` +
+      `<span>${escapeKeepa(label(c))}</span></label>`).join("")}</div>` +
+    `<div class="keepa-fm-footer"><span class="keepa-fm-status">${escapeKeepa(status || (keepaColumnDirty() ? "未保存の変更があります" : ""))}</span>` +
+    `<button type="button" class="detail-button keepa-search-button" id="kcmSave">上書き保存</button>` +
+    `<button type="button" class="detail-button" id="kcmSaveAs">新しい表示項目として保存</button></div>`;
+
+  // チェックの付け外し：表示する列を切り替えて、一覧をすぐ描き直す
+  body.querySelectorAll(".keepa-fm-grid input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) keepaShownColumns.add(cb.value); else keepaShownColumns.delete(cb.value);
+      refreshKeepaColumns();
+      renderKeepaColumnModal();
+    });
+  });
+  // すべて選択・すべて解除
+  document.getElementById("kcmAll").addEventListener("click", () => {
+    keepaShownColumns = new Set(KEEPA_COLUMN_CHOICES);
+    refreshKeepaColumns();
+    renderKeepaColumnModal();
+  });
+  document.getElementById("kcmNone").addEventListener("click", () => {
+    keepaShownColumns = new Set();
+    refreshKeepaColumns();
+    renderKeepaColumnModal();
+  });
+  // 保存した表示項目を選ぶ：その列に切り替える（選んだパターンは次回も使う）
+  document.getElementById("kcmPattern").addEventListener("change", (e) => {
+    keepaColumnState.current = e.target.value;
+    keepaShownColumns = new Set(keepaColumnPatternCols(keepaColumnState.current));
+    saveKeepaColumnState();
+    refreshKeepaColumns();
+    renderKeepaColumnModal();
+  });
+  // 上書き保存：今選んでいるパターンに今の列を保存する（デフォルトは固定なので不可）
+  document.getElementById("kcmSave").addEventListener("click", () => {
+    if (keepaColumnState.current === KEEPA_COLUMN_DEFAULT) {
+      alert("「デフォルト」は上書きできません。「新しい表示項目として保存」をお使いください。");
+      return;
+    }
+    keepaColumnState.patterns[keepaColumnState.current] = keepaDisplayColumnList();
+    if (saveKeepaColumnState()) { updateKeepaColumnPatternName(); renderKeepaColumnModal("保存しました"); }
+  });
+  // 新しい表示項目として保存：名前を付けて保存し、そのパターンを選んだ状態にする
+  document.getElementById("kcmSaveAs").addEventListener("click", () => {
+    const name = (prompt("新しい表示項目の名前を入力してください") || "").trim();
+    if (!name) return;
+    if (name === KEEPA_COLUMN_DEFAULT) {
+      alert("「デフォルト」という名前は使えません。");
+      return;
+    }
+    if (keepaColumnState.patterns[name] && !confirm(`「${name}」は既にあります。上書きしますか？`)) return;
+    keepaColumnState.patterns[name] = keepaDisplayColumnList();
+    keepaColumnState.current = name;
+    if (saveKeepaColumnState()) { updateKeepaColumnPatternName(); renderKeepaColumnModal("保存しました"); }
+  });
+  // 削除：今選んでいるパターンを消して、デフォルトに戻す
+  document.getElementById("kcmDelete").addEventListener("click", () => {
+    const name = keepaColumnState.current;
+    if (name === KEEPA_COLUMN_DEFAULT || !confirm(`「${name}」を削除しますか？`)) return;
+    delete keepaColumnState.patterns[name];
+    keepaColumnState.current = KEEPA_COLUMN_DEFAULT;
+    keepaShownColumns = new Set(KEEPA_DISPLAY_COLUMNS);
+    saveKeepaColumnState();
+    refreshKeepaColumns();
+    renderKeepaColumnModal("削除しました");
+  });
+}
+// 表示項目設定ボタン：ポップアップを開く。最初に今のパターン名を出しておく
+document.getElementById("keepaColumnSettings").addEventListener("click", () => {
+  ensureKeepaColumnModal();
+  renderKeepaColumnModal();
+  document.getElementById("keepaColumnModal").hidden = false;
+});
+updateKeepaColumnPatternName();
 // ポップアップの期間つき項目を「名前 7日／30日／90日」の3行に展開する
 // fn は期間の接尾辞（_7日 と _平均7日）を受け取り、その行に並べるカラム名の配列を返す
 // 30日・90日の行には、7日（最新）の値を基準にした差（+/−）を付ける
@@ -2732,7 +2906,9 @@ function renderKeepaTable(rows) {
   // 選んでいる方のボタンを色付きにし、優先順位の番号（①②③…）を付ける
   const head = document.getElementById("keepaHeadRow");
   const NUMS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯";
-  head.innerHTML = KEEPA_DISPLAY_COLUMNS.map((c) => {
+  // 表示する列は「表示項目設定」で選んだもの
+  const displayCols = keepaDisplayColumnList();
+  head.innerHTML = displayCols.map((c) => {
     const col = escapeKeepa(c);
     const i = keepaSorts.findIndex((s) => s.col === c);
     const btn = (asc, mark, tip) => {
@@ -2748,7 +2924,7 @@ function renderKeepaTable(rows) {
       `${btn(false, "▼", "降順（大きい順）：並び替えに追加。もう一度押すと外す")}</span></span></th>`;
   }).join("");
   document.getElementById("keepaListBody").innerHTML = rows.map((r, idx) => {
-    const tds = KEEPA_DISPLAY_COLUMNS.map((c) => {
+    const tds = displayCols.map((c) => {
       const text = escapeKeepa(keepaCellText(c, keepaValue(r, c)));
       let cls = KEEPA_LONG_COLUMNS.has(c) ? "keepa-long" : KEEPA_TEXT_COLUMNS.has(c) ? "keepa-text" : "";
       // 想定利益・買い時利益がマイナスなら赤字表示

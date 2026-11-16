@@ -2755,8 +2755,11 @@ function renderKeepaTable(rows) {
       // 省略表示されるセルは、マウスを乗せると全文が出るようtitleを付ける
       const title = KEEPA_LONG_COLUMNS.has(c) && text ? ` title="${text}"` : "";
       // タイトルはAmazonの商品ページへのリンクにする（新しいタブで開く。リンク元を送らない）
+      // 横幅を取らないよう先頭8文字だけ表示し、続きは「…」（全文はカーソルを合わせると出る）
       if (c === "タイトル" && r["ASIN"]) {
-        return `<td class="${cls}"${title}>${keepaAmazonLink(r["ASIN"], text || escapeKeepa(r["ASIN"]))}</td>`;
+        const full = keepaCellText(c, r[c]);
+        const short = full.length > 8 ? full.slice(0, 8) + "…" : full;
+        return `<td class="${cls}"${title}>${keepaAmazonLink(r["ASIN"], escapeKeepa(short) || escapeKeepa(r["ASIN"]))}</td>`;
       }
       return `<td class="${cls}"${title}>${text}</td>`;
     }).join("");

@@ -1906,6 +1906,8 @@ const KEEPA_COLUMN_CHOICES = (() => {
     if (c === "タイトル" || c === "メーカー名_英") continue;
     all.push(c === "メーカー名_日" ? "メーカー名" : c);
     if (c === "在庫数") all.push("在庫数_自社", "在庫数_TC");
+    // 割引率（ビューで計算する列）は参考価格のすぐ後ろ
+    if (c === "参考価格") all.push("割引率");
   }
   return [...KEEPA_DISPLAY_COLUMNS, ...all.filter((c) => !KEEPA_DISPLAY_COLUMNS.includes(c))];
 })();
@@ -1918,7 +1920,7 @@ function keepaColumnCategory(c) {
   if (["売れ筋ポイント", "売れ筋パターン", "想定利益", "想定利益率", "買い時ポイント", "買い時利益",
        "値崩れなし", "定価超え"].includes(c)) return "点数・利益";
   if (/ランキング|月間販売数/.test(c)) return "ランキング";
-  if (c === "参考価格" || c.startsWith("トップカート") || c.startsWith("高値期間割合")) return "価格";
+  if (c === "参考価格" || c === "割引率" || c.startsWith("トップカート") || c.startsWith("高値期間割合")) return "価格";
   if (c.startsWith("Amazon")) return "Amazon本体";
   if (c.startsWith("新品_")) return "新品";
   if (c.startsWith("中古_")) return "中古";
@@ -2115,6 +2117,7 @@ const KEEPA_DETAIL_GROUPS = [
   ["売れ行き・利益", [
     ["売れ筋パターン", ["売れ筋パターン"]],
     ["想定利益率(%)", ["想定利益率"]],
+    ["割引率(%)", ["割引率"]],
     ["月間販売数/全期間平均", ["月間販売数", "月間販売数_全期間平均"]],
   ]],
   ["大ランキング", [
@@ -2289,6 +2292,10 @@ const KEEPA_FILTERS = [
     } },
   ...rangeFilters("kfList", "参考価格(仕入れ)", "参考価格", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
   ...rangeFilters("kfSell", "販売価格(30日平均)", "新品_最安値_平均30日", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
+  // 割引率：参考価格に対して今の新品最安値が何%安いか（ビュー keepa情報_在庫込み で計算。参考価格が無い商品は除かれる）
+  { key: "kfDiscount", id: "kfDiscount", label: "割引率",
+    options: [["all", "全て"], ["30", "30%以上"], ["40", "40%以上"], ["50", "50%以上(半額以下)"]],
+    apply: (q, v) => (v === "all" ? q : q.gte("割引率", Number(v))) },
   { key: "kfMonthly", id: "kfMonthly", label: "月間販売数",
     options: [["all", "全て"], ["100", "100個以上"], ["50", "50個以上"], ["30", "30個以上"], ["10", "10個以上"]],
     apply: (q, v) => (v === "all" ? q : q.gte("月間販売数", Number(v))) },
@@ -2344,6 +2351,7 @@ const KEEPA_FILTER_HELP = {
   kfSubCategory: "細かいジャンル（小ランキング名）の一部の文字で絞る",
   kfList: "仕入れ値の目安（参考価格＝定価）の価格帯で絞る",
   kfSell: "売値の目安（新品最安値の30日平均）の価格帯で絞る",
+  kfDiscount: "定価（参考価格）に対して今の新品最安値が何%安いか（50%以上＝半額以下で買える）",
   kfMonthly: "Amazonの「過去1か月の購入数」で絞る（よく売れる商品にだけ値がある）",
   kfDrops90: "長い期間（90日）で安定して売れているか",
   kfDrops7: "直近7日に売れているか（今も売れているか）",
@@ -2375,7 +2383,7 @@ const KEEPA_FILTER_CATEGORIES = [
   ["在庫", ["kfStock"]],
   ["点数・利益", ["kfScore", "kfProfit", "kfBuy", "kfBuyProfit", "kfPattern"]],
   ["ランキング・売れ行き", ["kfRank", "kfDrops30", "kfDrops90", "kfDrops7", "kfHigh30", "kfMonthly"]],
-  ["価格", ["kfList", "kfSell", "kfNoDrop", "kfOverList", "kfHighRate30"]],
+  ["価格", ["kfList", "kfSell", "kfDiscount", "kfNoDrop", "kfOverList", "kfHighRate30"]],
   ["出品者・Amazon", ["kfSellers", "kfUsedSellers", "kfAmazon", "kfOos90"]],
 ];
 // 種類ごとに見出し＋チェックボックスの並びを作る（items＝[{value, label, checked, help}]、groupOf＝value→見出し）
@@ -2409,10 +2417,10 @@ const KEEPA_PRESET_PATTERNS = {
     keys: ["kfKeyword", "kfMaker", "kfRank", "kfPattern", "kfDrops30", "kfScore", "kfProfit", "kfSellers", "kfCategory"],
     values: { kfRank: "100000", kfPattern: "Amazon不在", kfDrops30: "1" },
   },
-  // 買うやつ：買い時のある商品（刈り取り・在庫として保管）。ランキングが良い（5万位以内）
+  // 買うやつ：買い時のある商品（刈り取り・在庫として保管）。ランキングが良い（5万位以内）・割引率50%以上（半額以下）
   "買うやつ": {
-    keys: ["kfKeyword", "kfMaker", "kfRank", "kfBuy", "kfBuyProfit", "kfDrops30", "kfCategory"],
-    values: { kfRank: "50000" },
+    keys: ["kfKeyword", "kfMaker", "kfRank", "kfDiscount", "kfBuy", "kfBuyProfit", "kfDrops30", "kfCategory"],
+    values: { kfRank: "50000", kfDiscount: "50" },
   },
 };
 // 上書き・削除できないパターン名（デフォルト＋固定パターン）
@@ -2874,7 +2882,7 @@ async function loadKeepaPage(page) {
     // ビュー keepa情報_在庫込み（keepa情報＋別テーブル keepa情報_在庫 の在庫数_自社・在庫数_TC）から読む
     let q = supabaseClient
       .from("keepa情報_在庫込み")
-      .select([...KEEPA_COLUMNS, "在庫数_自社", "在庫数_TC"].join(","), { count: "exact" });
+      .select([...KEEPA_COLUMNS, "在庫数_自社", "在庫数_TC", "割引率"].join(","), { count: "exact" });
     q = applyKeepaFilters(q);
     // 並び替え：▲▼で指定した順（先に選んだ項目ほど優先）。空欄は常に最後、全部同じ値ならASIN順
     for (const s of keepaSorts) q = q.order(keepaSortDbCol(s.col), { ascending: s.asc, nullsFirst: false });

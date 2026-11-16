@@ -425,6 +425,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 /* フィルター設定のポップアップ：保存したフィルターの選択・チェックボックス一覧（2〜3列）・保存ボタン */
 .keepa-fm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
 .keepa-fm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px 14px; margin: 6px 0 16px; }
+/* 種類ごとの見出し（基本・在庫・ランキング・価格…） */
+.keepa-fm-group-title { font-size: 0.85rem; font-weight: 700; color: var(--ink); padding-bottom: 2px; border-bottom: 1px solid var(--line); }
 .keepa-fm-item { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer; }
 .keepa-fm-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
 .keepa-fm-status { margin-right: auto; font-size: 0.8rem; color: var(--sub); }
@@ -1907,6 +1909,21 @@ const KEEPA_COLUMN_CHOICES = (() => {
   }
   return [...KEEPA_DISPLAY_COLUMNS, ...all.filter((c) => !KEEPA_DISPLAY_COLUMNS.includes(c))];
 })();
+// 表示項目設定のポップアップでの種類分け：見出しの並びと、列名から種類を決める関数
+const KEEPA_COLUMN_CATEGORIES = ["基本", "在庫", "点数・利益", "ランキング", "価格", "Amazon本体", "新品", "中古", "その他"];
+function keepaColumnCategory(c) {
+  if (["タイトル", "ASIN", "JAN", "メーカー名", "型番", "発売日", "大ランキング名", "小ランキング名",
+       "配送サイズ", "配送料金", "梱包サイズ", "製品サイズ"].includes(c)) return "基本";
+  if (c.startsWith("在庫数")) return "在庫";
+  if (["売れ筋ポイント", "売れ筋パターン", "想定利益", "想定利益率", "買い時ポイント", "買い時利益",
+       "値崩れなし", "定価超え"].includes(c)) return "点数・利益";
+  if (/ランキング|月間販売数/.test(c)) return "ランキング";
+  if (c === "参考価格" || c.startsWith("トップカート") || c.startsWith("高値期間割合")) return "価格";
+  if (c.startsWith("Amazon")) return "Amazon本体";
+  if (c.startsWith("新品_")) return "新品";
+  if (c.startsWith("中古_")) return "中古";
+  return "その他";
+}
 // 「デフォルト」＝今の一覧の11列（コードで固定。上書き・削除はできない）
 const KEEPA_COLUMN_DEFAULT = "デフォルト";
 // 保存したパターン（{patterns: {名前: [列名, ...]}, current: 今選んでいる名前}）はこのブラウザに保存する
@@ -1986,9 +2003,10 @@ function renderKeepaColumnModal(status = "") {
     `<p class="caption">チェックを入れた項目だけが一覧に表示されます（チェックするとすぐ反映。通信はしません）。</p>` +
     `<div class="keepa-fm-row"><button type="button" class="detail-button" id="kcmAll">すべて選択</button>` +
     `<button type="button" class="detail-button" id="kcmNone">すべて解除</button></div>` +
-    `<div class="keepa-fm-grid">${KEEPA_COLUMN_CHOICES.map((c) =>
-      `<label class="keepa-fm-item"><input type="checkbox" value="${escapeKeepa(c)}"${keepaShownColumns.has(c) ? " checked" : ""}>` +
-      `<span>${escapeKeepa(label(c))}</span></label>`).join("")}</div>` +
+    // 種類（基本・在庫・点数・利益・ランキング・価格…）ごとに見出しを付けて並べる
+    keepaGroupedChecksHtml(
+      KEEPA_COLUMN_CHOICES.map((c) => ({ value: c, label: label(c), checked: keepaShownColumns.has(c) })),
+      KEEPA_COLUMN_CATEGORIES, keepaColumnCategory) +
     `<div class="keepa-fm-footer"><span class="keepa-fm-status">${escapeKeepa(status || (keepaColumnDirty() ? "未保存の変更があります" : ""))}</span>` +
     `<button type="button" class="detail-button keepa-search-button" id="kcmSave">上書き保存</button>` +
     `<button type="button" class="detail-button" id="kcmSaveAs">新しい表示項目として保存</button></div>`;
@@ -2351,6 +2369,28 @@ function keepaFilterLabel(f) {
 // ■フィルター設定（どの絞り込み項目を表示するか）と、その保存パターン
 // 表示・非表示の単位（key）の一覧（範囲指定の上限側は下限側と同じkeyなので除く）
 const KEEPA_FILTER_GROUPS = KEEPA_FILTERS.filter((f) => f.range !== "end").map((f) => ({ key: f.key, label: f.label }));
+// フィルター設定のポップアップでの種類分け（[見出し, [key, ...]]）。どれにも入らないkeyは「その他」に出す
+const KEEPA_FILTER_CATEGORIES = [
+  ["基本", ["kfKeyword", "kfMaker", "kfCategory", "kfSubCategory", "kfRelease", "kfShipSize"]],
+  ["在庫", ["kfStock"]],
+  ["点数・利益", ["kfScore", "kfProfit", "kfBuy", "kfBuyProfit", "kfPattern"]],
+  ["ランキング・売れ行き", ["kfRank", "kfDrops30", "kfDrops90", "kfDrops7", "kfHigh30", "kfMonthly"]],
+  ["価格", ["kfList", "kfSell", "kfNoDrop", "kfOverList", "kfHighRate30"]],
+  ["出品者・Amazon", ["kfSellers", "kfUsedSellers", "kfAmazon", "kfOos90"]],
+];
+// 種類ごとに見出し＋チェックボックスの並びを作る（items＝[{value, label, checked, help}]、groupOf＝value→見出し）
+function keepaGroupedChecksHtml(items, categories, groupOf) {
+  const groups = new Map(categories.map((c) => [c, []]));
+  for (const it of items) {
+    const g = groupOf(it.value);
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(it);
+  }
+  return [...groups].filter(([, list]) => list.length).map(([title, list]) =>
+    `<div class="keepa-fm-group"><div class="keepa-fm-group-title">${escapeKeepa(title)}</div><div class="keepa-fm-grid">` +
+    list.map((it) => `<label class="keepa-fm-item"><input type="checkbox" value="${escapeKeepa(it.value)}"${it.checked ? " checked" : ""}>` +
+      `<span>${escapeKeepa(it.label)}</span>${it.help || ""}</label>`).join("") + `</div></div>`).join("");
+}
 // 「デフォルト」パターン＝これまでの絞り込み欄と同じ10項目（コードで固定。上書き・削除はできない）
 const KEEPA_DEFAULT_PATTERN = "デフォルト";
 const KEEPA_DEFAULT_KEYS = ["kfKeyword", "kfMaker", "kfStock", "kfScore", "kfProfit", "kfBuy", "kfBuyProfit",
@@ -2424,9 +2464,11 @@ function renderKeepaFilterModal(status = "") {
     `<p class="caption">チェックを入れた項目だけが、絞り込み欄に表示されます（チェックするとすぐ反映）。</p>` +
     `<div class="keepa-fm-row"><button type="button" class="detail-button" id="kfmAll">すべて選択</button>` +
     `<button type="button" class="detail-button" id="kfmNone">すべて解除</button></div>` +
-    `<div class="keepa-fm-grid">${KEEPA_FILTER_GROUPS.map((g) =>
-      `<label class="keepa-fm-item"><input type="checkbox" value="${g.key}"${keepaVisibleKeys.has(g.key) ? " checked" : ""}>` +
-      `<span>${escapeKeepa(g.label)}</span>${keepaHelpMark(g.key)}</label>`).join("")}</div>` +
+    // 種類（基本・在庫・点数・利益…）ごとに見出しを付けて並べる
+    keepaGroupedChecksHtml(
+      KEEPA_FILTER_GROUPS.map((g) => ({ value: g.key, label: g.label, checked: keepaVisibleKeys.has(g.key), help: keepaHelpMark(g.key) })),
+      KEEPA_FILTER_CATEGORIES.map(([t]) => t),
+      (key) => (KEEPA_FILTER_CATEGORIES.find(([, keys]) => keys.includes(key)) || ["その他"])[0]) +
     `<div class="keepa-fm-footer"><span class="keepa-fm-status">${escapeKeepa(status || (dirty ? "未保存の変更があります" : ""))}</span>` +
     `<button type="button" class="detail-button keepa-search-button" id="kfmSave">上書き保存</button>` +
     `<button type="button" class="detail-button" id="kfmSaveAs">新しいフィルターとして保存</button></div>`;

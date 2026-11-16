@@ -416,7 +416,17 @@ tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 /* 検索ボタンは目立つよう塗りつぶし */
 .keepa-search-button { background: var(--amazon); color: #fff; border-color: var(--amazon); font-weight: 600; }
 .keepa-search-button:hover { background: color-mix(in srgb, var(--amazon) 85%, #000); }
-/* 在庫数の絞り込みのチェックボックス（トイセンター・自社） */
+/* フィルター設定ボタンと、今選んでいるフィルター名 */
+.keepa-settings-field { align-items: center; }
+.keepa-settings-button { font-weight: 600; }
+.keepa-pattern-name { font-size: 0.78rem; color: var(--sub); white-space: nowrap; }
+/* フィルター設定のポップアップ：保存したフィルターの選択・チェックボックス一覧（2〜3列）・保存ボタン */
+.keepa-fm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.keepa-fm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px 14px; margin: 6px 0 16px; }
+.keepa-fm-item { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer; }
+.keepa-fm-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.keepa-fm-status { margin-right: auto; font-size: 0.8rem; color: var(--sub); }
+/* 在庫数の絞り込みのチェックボックス（取引先・自社） */
 .keepa-check { display: inline-flex; align-items: center; gap: 3px; font-size: 0.85rem; white-space: nowrap; cursor: pointer; }
 /* メーカー絞り込み：ボタンを押すと下に検索欄つきのチェックボックス一覧を開く */
 .keepa-maker-field { position: relative; }
@@ -1981,13 +1991,13 @@ const PROFIT_STEPS = [0, 500, 1000, 1500, 2000, 3000, 5000, 10000];
 function cleanKeyword(v) {
   return v.replace(/["\\*%,()]/g, " ").trim();
 }
-// 範囲指定（下限〜上限）のプルダウン2つ分の定義を作る
+// 範囲指定（下限〜上限）のプルダウン2つ分の定義を作る（2つとも key＝idBase で、表示・非表示は一緒に切り替わる）
 function rangeFilters(idBase, label, column, steps, unitText) {
   const opts = (none) => [["all", none], ...steps.map((n) => [String(n), unitText(n)])];
   return [
-    { id: idBase + "Min", label, range: "start", options: opts("下限なし"),
+    { key: idBase, id: idBase + "Min", label, range: "start", options: opts("下限なし"),
       apply: (q, v) => (v === "all" ? q : q.gte(column, Number(v))) },
-    { id: idBase + "Max", label: "〜", range: "end", options: opts("上限なし"),
+    { key: idBase, id: idBase + "Max", label: "〜", range: "end", options: opts("上限なし"),
       apply: (q, v) => (v === "all" ? q : q.lte(column, Number(v))) },
   ];
 }
@@ -2014,11 +2024,18 @@ function toggleKeepaSort(col, asc) {
 }
 const keepaSortIsDefault = () => JSON.stringify(keepaSorts) === JSON.stringify(KEEPA_DEFAULT_SORTS);
 
-// 絞り込み項目（必要最低限：キーワード・在庫・売れ筋ポイント・想定利益・買い時ポイント・買い時利益
-// ・大ランキング名・売れた回数(30日)・新品出品者数）
+// ■絞り込み項目（全項目）
+// key＝表示・非表示を切り替える単位（範囲指定は下限・上限の2つで1つのkey）。どれを表示するかは「フィルター設定」で選ぶ
+// 発売日の年の選択肢：今年〜2000年（新しい順。今年の分は毎年自動で増える）
+const RELEASE_YEARS = Array.from({ length: new Date().getFullYear() - 1999 }, (_, i) => new Date().getFullYear() - i);
+// 参考価格・販売価格の範囲の選択肢（円）、割合の選択肢（%）
+const PRICE_STEPS = [1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000];
+const PERCENT_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+// 配送サイズの選択肢（keepa_配送料金.py の判定結果の表記に合わせる）
+const SHIP_SIZES = ["レターパック", "60", "80", "100", "140", "160", "170", "180", "200", "220", "240", "260", "サイズ不明"];
 const KEEPA_FILTERS = [
   // キーワード：ASIN・タイトル・メーカー名・型番・JANのどれかに一部一致（テキスト入力）
-  { id: "kfKeyword", label: "キーワード", type: "text", placeholder: "ASIN・タイトル・メーカー・型番・JAN",
+  { key: "kfKeyword", id: "kfKeyword", label: "キーワード", type: "text", placeholder: "ASIN・タイトル・メーカー・型番・JAN",
     apply: (q) => q,
     ors: (v) => {
       const kw = v === "all" ? "" : cleanKeyword(v);
@@ -2027,7 +2044,7 @@ const KEEPA_FILTERS = [
     } },
   // メーカー：検索つきチェックボックスで複数選択（値は選んだメーカー名のJSON配列）
   // 表示上のメーカー名＝日本語名があれば日本語名、無ければ英語名、なので条件も同じ考え方にする
-  { id: "kfMaker", label: "メーカー", type: "maker",
+  { key: "kfMaker", id: "kfMaker", label: "メーカー", type: "maker",
     apply: (q) => q,
     ors: (v) => {
       if (v === "all") return null;
@@ -2039,57 +2056,272 @@ const KEEPA_FILTERS = [
     } },
   // 在庫数：取引先（トイセンター＝在庫数_TC）・自社のチェックボックス。チェックしたところのどれかに在庫が1以上ある商品を出す
   // （値はチェックしたカラム名の「,」区切り。何もチェックしなければ絞り込まない）
-  { id: "kfStock", label: "在庫数", type: "checks",
+  { key: "kfStock", id: "kfStock", label: "在庫数", type: "checks",
     checks: [["在庫数_TC", "取引先"], ["在庫数_自社", "自社"]],
     apply: (q) => q,
     ors: (v) => (v === "all" ? null : v.split(",").map((c) => `${c}.gte.1`).join(",")) },
-  // 売れ筋ポイント・想定利益は「下限〜上限」の2つのプルダウンで範囲指定
-  { id: "kfScoreMin", label: "売れ筋ポイント", range: "start",
-    options: [["all", "下限なし"], ...SCORE_STEPS.map((n) => [String(n), `${n}点`])],
-    apply: (q, v) => (v === "all" ? q : q.gte("売れ筋ポイント", Number(v))) },
-  { id: "kfScoreMax", label: "〜", range: "end",
-    options: [["all", "上限なし"], ...SCORE_STEPS.map((n) => [String(n), `${n}点`])],
-    apply: (q, v) => (v === "all" ? q : q.lte("売れ筋ポイント", Number(v))) },
-  { id: "kfProfitMin", label: "想定利益", range: "start",
-    options: [["all", "下限なし"], ...PROFIT_STEPS.map((n) => [String(n), `${n.toLocaleString()}円`])],
-    apply: (q, v) => (v === "all" ? q : q.gte("想定利益", Number(v))) },
-  { id: "kfProfitMax", label: "〜", range: "end",
-    options: [["all", "上限なし"], ...PROFIT_STEPS.map((n) => [String(n), `${n.toLocaleString()}円`])],
-    apply: (q, v) => (v === "all" ? q : q.lte("想定利益", Number(v))) },
-  // 買い時ポイント・買い時利益：今の安い価格で仕入れ、90日平均の価格に戻ったら売る想定の点数と利益
+  // 売れ筋ポイント・想定利益・買い時ポイント・買い時利益：「下限〜上限」の2つのプルダウンで範囲指定
+  ...rangeFilters("kfScore", "売れ筋ポイント", "売れ筋ポイント", SCORE_STEPS, (n) => `${n}点`),
+  ...rangeFilters("kfProfit", "想定利益", "想定利益", PROFIT_STEPS, (n) => `${n.toLocaleString()}円`),
   ...rangeFilters("kfBuy", "買い時ポイント", "買い時ポイント", SCORE_STEPS, (n) => `${n}点`),
   ...rangeFilters("kfBuyProfit", "買い時利益", "買い時利益", PROFIT_STEPS, (n) => `${n.toLocaleString()}円`),
-  { id: "kfCategory", label: "大ランキング名",
+  { key: "kfCategory", id: "kfCategory", label: "大ランキング名",
     options: [["all", "全て"], ...KEEPA_CATEGORIES.map((c) => [c, c])],
     apply: (q, v) => (v === "all" ? q : q.eq("大ランキング名", v)) },
-  { id: "kfDrops30", label: "売れた回数(30日)",
+  { key: "kfDrops30", id: "kfDrops30", label: "売れた回数(30日)",
     options: [["all", "全て"], ["15", "15回以上"], ["8", "8回以上"], ["4", "4回以上"], ["1", "1回以上"]],
     apply: (q, v) => (v === "all" ? q : q.gte("大ランキング下降回数_30日", Number(v))) },
   // 新品出品者数：空欄（出品者が居ない）も「0人」扱いで含める。未取得の行は除く
-  { id: "kfSellers", label: "新品出品者数",
+  { key: "kfSellers", id: "kfSellers", label: "新品出品者数",
     options: [["all", "全て"], ["0", "0人"], ["3", "3人以下"], ["5", "5人以下"], ["10", "10人以下"]],
     apply: (q, v) => (v === "all" ? q : q.not("初回取得日時", "is", null)),
     ors: (v) => (v === "all" ? null : `新品_出品者数.is.null,新品_出品者数.lte.${Number(v)}`) },
+  // ここから下は、初期（デフォルト）では表示しない項目（フィルター設定でチェックすると表示）
+  { key: "kfPattern", id: "kfPattern", label: "売れ筋パターン",
+    options: [["all", "全て"], ["Amazon不在", "Amazon不在"], ["Amazon在庫切れあり", "Amazon在庫切れあり"], ["Amazon常駐", "Amazon常駐"]],
+    apply: (q, v) => (v === "all" ? q : q.eq("売れ筋パターン", v)) },
+  // 発売日：年の範囲指定（下限年の1月1日以降〜上限年の12月31日以前）。指定すると発売日が空欄の商品は除かれる
+  { key: "kfRelease", id: "kfReleaseMin", label: "発売日", range: "start",
+    options: [["all", "下限なし"], ...RELEASE_YEARS.map((y) => [String(y), `${y}年`])],
+    apply: (q, v) => (v === "all" ? q : q.gte("発売日", `${v}-01-01`)) },
+  { key: "kfRelease", id: "kfReleaseMax", label: "〜", range: "end",
+    options: [["all", "上限なし"], ...RELEASE_YEARS.map((y) => [String(y), `${y}年`])],
+    apply: (q, v) => (v === "all" ? q : q.lte("発売日", `${v}-12-31`)) },
+  // 小ランキング名：種類が多いためテキスト入力で一部一致
+  { key: "kfSubCategory", id: "kfSubCategory", label: "小ランキング名", type: "text", placeholder: "例：人形、プラモデル",
+    apply: (q, v) => {
+      const kw = v === "all" ? "" : cleanKeyword(v);
+      return kw ? q.ilike("小ランキング名", `%${kw}%`) : q;
+    } },
+  ...rangeFilters("kfList", "参考価格(仕入れ)", "参考価格", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
+  ...rangeFilters("kfSell", "販売価格(30日平均)", "新品_最安値_平均30日", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
+  { key: "kfMonthly", id: "kfMonthly", label: "月間販売数",
+    options: [["all", "全て"], ["100", "100個以上"], ["50", "50個以上"], ["30", "30個以上"], ["10", "10個以上"]],
+    apply: (q, v) => (v === "all" ? q : q.gte("月間販売数", Number(v))) },
+  { key: "kfDrops90", id: "kfDrops90", label: "売れた回数(90日)",
+    options: [["all", "全て"], ["45", "45回以上"], ["24", "24回以上"], ["12", "12回以上"], ["3", "3回以上"]],
+    apply: (q, v) => (v === "all" ? q : q.gte("大ランキング下降回数_90日", Number(v))) },
+  // 直近7日の売れ：「売れなし」は下降回数が空欄か0の行（未取得の行は除く）
+  { key: "kfDrops7", id: "kfDrops7", label: "直近7日の売れ", options: [["all", "全て"], ["yes", "売れあり"], ["no", "売れなし"]],
+    apply: (q, v) => (v === "yes" ? q.gte("大ランキング下降回数_7日", 1) : v === "no" ? q.not("初回取得日時", "is", null) : q),
+    ors: (v) => (v === "no" ? "大ランキング下降回数_7日.is.null,大ランキング下降回数_7日.eq.0" : null) },
+  { key: "kfHigh30", id: "kfHigh30", label: "高値で売れた回数(30日)",
+    options: [["all", "全て"], ["5", "5回以上"], ["3", "3回以上"], ["1", "1回以上"]],
+    apply: (q, v) => (v === "all" ? q : q.gte("高値時ランキング下降回数_30日", Number(v))) },
+  { key: "kfHighRate30", id: "kfHighRate30", label: "高値期間割合(30日)",
+    options: [["all", "全て"], ["80", "80%以上"], ["50", "50%以上"], ["30", "30%以上"], ["10", "10%以上"]],
+    apply: (q, v) => (v === "all" ? q : q.gte("高値期間割合_30日", Number(v))) },
+  { key: "kfNoDrop", id: "kfNoDrop", label: "値崩れなし", options: [["all", "全て"], ["yes", "値崩れなしのみ"]],
+    apply: (q, v) => (v === "yes" ? q.eq("値崩れなし", true) : q) },
+  { key: "kfOverList", id: "kfOverList", label: "定価超え", options: [["all", "全て"], ["yes", "定価超えで売れているもののみ"]],
+    apply: (q, v) => (v === "yes" ? q.eq("定価超え", true) : q) },
+  // 中古出品者数：新品と同じく、空欄（出品者が居ない）も含める。未取得の行は除く
+  { key: "kfUsedSellers", id: "kfUsedSellers", label: "中古出品者数",
+    options: [["all", "全て"], ["0", "0人"], ["3", "3人以下"], ["5", "5人以下"], ["10", "10人以下"]],
+    apply: (q, v) => (v === "all" ? q : q.not("初回取得日時", "is", null)),
+    ors: (v) => (v === "all" ? null : `中古_出品者数.is.null,中古_出品者数.lte.${Number(v)}`) },
+  // Amazon本体(現在)：Amazon価格が空欄＝今は出品なし（未取得の行は除く）
+  { key: "kfAmazon", id: "kfAmazon", label: "Amazon本体(現在)", options: [["all", "全て"], ["none", "出品なし"], ["sell", "出品あり"]],
+    apply: (q, v) => (v === "none" ? q.is("Amazon価格", null).not("初回取得日時", "is", null)
+      : v === "sell" ? q.not("Amazon価格", "is", null) : q) },
+  { key: "kfRank", id: "kfRank", label: "ランキング(7日最高)",
+    options: [["all", "全て"], ["10000", "1万位以内"], ["50000", "5万位以内"], ["100000", "10万位以内"]],
+    apply: (q, v) => (v === "all" ? q : q.lte("大ランキング順位最小_7日", Number(v))) },
+  ...rangeFilters("kfOos90", "Amazon在庫切れ率(90日)", "Amazon在庫切れ率_90日", PERCENT_STEPS, (n) => `${n}%`),
+  { key: "kfShipSize", id: "kfShipSize", label: "配送サイズ",
+    options: [["all", "全て"], ...SHIP_SIZES.map((s) => [s, /^\d+$/.test(s) ? `${s}サイズ` : s])],
+    apply: (q, v) => (v === "all" ? q : q.eq("配送サイズ", v)) },
 ];
 
-// 絞り込み項目ごとの「?」マークに出す説明（id→理由）。範囲指定は下限側のidに付ける
+// 絞り込み項目ごとの「?」マークに出す説明（key→理由）。絞り込み欄とフィルター設定の両方に出す
 const KEEPA_FILTER_HELP = {
   kfKeyword: "ASIN・商品名・メーカー・型番・JANで探す基本の検索",
   kfMaker: "メーカーを検索して、チェックで複数選んで絞る",
   kfStock: "チェックしたところ（取引先・自社）のどれかに在庫がある商品だけ見たいとき",
-  kfScoreMin: "出品して売れるかの総合判断",
-  kfProfitMin: "定価で仕入れたときの儲け",
-  kfBuyMin: "今が仕入れ時かの総合判断",
-  kfBuyProfitMin: "今の価格で仕入れたときの儲け",
+  kfScore: "出品して売れるかの総合判断",
+  kfProfit: "定価で仕入れたときの儲け",
+  kfBuy: "今が仕入れ時かの総合判断",
+  kfBuyProfit: "今の価格で仕入れたときの儲け",
   kfCategory: "ジャンルを絞る",
   kfDrops30: "売れる頻度（大ランキング下降回数_30日）",
   kfSellers: "ライバルの多さ",
+  kfPattern: "Amazon本体の出品状況（不在・在庫切れあり・常駐）で絞る",
+  kfRelease: "発売された年の範囲で、新しい商品・古い商品に絞る",
+  kfSubCategory: "細かいジャンル（小ランキング名）の一部の文字で絞る",
+  kfList: "仕入れ値の目安（参考価格＝定価）の価格帯で絞る",
+  kfSell: "売値の目安（新品最安値の30日平均）の価格帯で絞る",
+  kfMonthly: "Amazonの「過去1か月の購入数」で絞る（よく売れる商品にだけ値がある）",
+  kfDrops90: "長い期間（90日）で安定して売れているか",
+  kfDrops7: "直近7日に売れているか（今も売れているか）",
+  kfHigh30: "価格が高いときにも売れた実績（30日）",
+  kfHighRate30: "価格が高い状態だった時間の割合（30日）",
+  kfNoDrop: "今の新品最安値が30日平均の90%以上（値崩れしていない）",
+  kfOverList: "新品最安値の30日平均が定価より高い（定価以上で売れている）",
+  kfUsedSellers: "中古のライバルの多さ",
+  kfAmazon: "Amazon本体が今出品しているか",
+  kfRank: "直近7日で一番良かった順位で絞る",
+  kfOos90: "Amazon本体が在庫切れしやすいか（90日の在庫切れ率）",
+  kfShipSize: "送料の目安になる配送サイズで絞る",
 };
 // 項目名＋「?」マーク（説明がある項目だけ）のHTMLを作る
+function keepaHelpMark(key) {
+  const help = KEEPA_FILTER_HELP[key];
+  return help ? `<span class="keepa-help" tabindex="0" data-help="${escapeKeepa(help)}">?</span>` : "";
+}
 function keepaFilterLabel(f) {
-  const help = KEEPA_FILTER_HELP[f.id];
-  const mark = help ? `<span class="keepa-help" tabindex="0" data-help="${escapeKeepa(help)}">?</span>` : "";
-  return `<span class="filter-label">${escapeKeepa(f.label)}${mark}</span>`;
+  return `<span class="filter-label">${escapeKeepa(f.label)}${keepaHelpMark(f.key)}</span>`;
+}
+
+// ■フィルター設定（どの絞り込み項目を表示するか）と、その保存パターン
+// 表示・非表示の単位（key）の一覧（範囲指定の上限側は下限側と同じkeyなので除く）
+const KEEPA_FILTER_GROUPS = KEEPA_FILTERS.filter((f) => f.range !== "end").map((f) => ({ key: f.key, label: f.label }));
+// 「デフォルト」パターン＝これまでの絞り込み欄と同じ10項目（コードで固定。上書き・削除はできない）
+const KEEPA_DEFAULT_PATTERN = "デフォルト";
+const KEEPA_DEFAULT_KEYS = ["kfKeyword", "kfMaker", "kfStock", "kfScore", "kfProfit", "kfBuy", "kfBuyProfit",
+  "kfCategory", "kfDrops30", "kfSellers"];
+// 保存したパターン（{patterns: {名前: [key, ...]}, current: 今選んでいる名前}）はこのブラウザに保存する
+// （ブラウザごと・端末ごとの保存。読み書きできない環境でも動くよう try で囲む）
+const KEEPA_PATTERN_STORAGE = "keepaFilterPatterns_v1";
+function loadKeepaPatternState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEEPA_PATTERN_STORAGE) || "null");
+    if (s && s.patterns && typeof s.patterns === "object") return s;
+  } catch (e) { /* 読めなければ初期状態 */ }
+  return { patterns: {}, current: KEEPA_DEFAULT_PATTERN };
+}
+function saveKeepaPatternState() {
+  try {
+    localStorage.setItem(KEEPA_PATTERN_STORAGE, JSON.stringify(keepaPatternState));
+    return true;
+  } catch (e) {
+    alert("このブラウザでは保存できませんでした（プライベートモード等）。");
+    return false;
+  }
+}
+let keepaPatternState = loadKeepaPatternState();
+// パターン名 → 表示する項目のkey（存在しない項目のkeyは除く）
+function keepaPatternKeys(name) {
+  const keys = name === KEEPA_DEFAULT_PATTERN ? KEEPA_DEFAULT_KEYS : keepaPatternState.patterns[name];
+  const valid = new Set(KEEPA_FILTER_GROUPS.map((g) => g.key));
+  return (keys || KEEPA_DEFAULT_KEYS).filter((k) => valid.has(k));
+}
+if (keepaPatternState.current !== KEEPA_DEFAULT_PATTERN && !keepaPatternState.patterns[keepaPatternState.current]) {
+  keepaPatternState.current = KEEPA_DEFAULT_PATTERN;
+}
+// 今、絞り込み欄に表示している項目のkey
+let keepaVisibleKeys = new Set(keepaPatternKeys(keepaPatternState.current));
+// 表示中の項目のkeyを、項目の並び順で返す（保存用）
+const keepaVisibleKeyList = () => KEEPA_FILTER_GROUPS.map((g) => g.key).filter((k) => keepaVisibleKeys.has(k));
+// 今の表示が、選んでいるパターンの保存内容と違うか（未保存の変更があるか）
+const keepaPatternDirty = () =>
+  keepaVisibleKeyList().join(",") !== keepaPatternKeys(keepaPatternState.current).join(",");
+
+// フィルター設定のポップアップ（初めて開くときに1回だけ作る）
+function ensureKeepaFilterModal() {
+  if (document.getElementById("keepaFilterModal")) return;
+  const wrap = document.createElement("div");
+  wrap.className = "modal-overlay";
+  wrap.id = "keepaFilterModal";
+  wrap.hidden = true;
+  wrap.innerHTML = `<div class="modal-box modal-box-wide">` +
+    `<button type="button" class="modal-close" id="keepaFilterModalClose" aria-label="閉じる">×</button>` +
+    `<div class="modal-scroll" id="keepaFilterModalBody"></div></div>`;
+  document.body.appendChild(wrap);
+  // ×ボタン・ポップアップの外側クリックで閉じる
+  document.getElementById("keepaFilterModalClose").addEventListener("click", () => { wrap.hidden = true; });
+  wrap.addEventListener("click", (e) => { if (e.target === wrap) wrap.hidden = true; });
+}
+
+// フィルター設定のポップアップの中身を描画する
+function renderKeepaFilterModal(status = "") {
+  const body = document.getElementById("keepaFilterModalBody");
+  const cur = keepaPatternState.current;
+  const names = [KEEPA_DEFAULT_PATTERN, ...Object.keys(keepaPatternState.patterns)];
+  const isDefault = cur === KEEPA_DEFAULT_PATTERN;
+  const dirty = keepaPatternDirty();
+  body.innerHTML =
+    `<h3 class="modal-product-title">フィルター設定</h3>` +
+    `<div class="keepa-fm-row"><label class="filter-field"><span class="filter-label">保存したフィルター</span>` +
+    `<select id="kfmPattern">${names.map((n) => `<option value="${escapeKeepa(n)}"${n === cur ? " selected" : ""}>` +
+      `${escapeKeepa(n)}</option>`).join("")}</select></label>` +
+    `<button type="button" class="detail-button" id="kfmDelete"${isDefault ? " disabled" : ""}>このフィルターを削除</button></div>` +
+    `<p class="caption">チェックを入れた項目だけが、絞り込み欄に表示されます（チェックするとすぐ反映）。</p>` +
+    `<div class="keepa-fm-row"><button type="button" class="detail-button" id="kfmAll">すべて選択</button>` +
+    `<button type="button" class="detail-button" id="kfmNone">すべて解除</button></div>` +
+    `<div class="keepa-fm-grid">${KEEPA_FILTER_GROUPS.map((g) =>
+      `<label class="keepa-fm-item"><input type="checkbox" value="${g.key}"${keepaVisibleKeys.has(g.key) ? " checked" : ""}>` +
+      `<span>${escapeKeepa(g.label)}</span>${keepaHelpMark(g.key)}</label>`).join("")}</div>` +
+    `<div class="keepa-fm-footer"><span class="keepa-fm-status">${escapeKeepa(status || (dirty ? "未保存の変更があります" : ""))}</span>` +
+    `<button type="button" class="detail-button keepa-search-button" id="kfmSave">上書き保存</button>` +
+    `<button type="button" class="detail-button" id="kfmSaveAs">新しいフィルターとして保存</button></div>`;
+
+  // チェックの付け外し：表示する項目を切り替えて、絞り込み欄をすぐ描き直す
+  body.querySelectorAll(".keepa-fm-grid input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) keepaVisibleKeys.add(cb.value); else keepaVisibleKeys.delete(cb.value);
+      renderKeepaFilters();
+      renderKeepaFilterModal();
+    });
+  });
+  // すべて選択・すべて解除
+  document.getElementById("kfmAll").addEventListener("click", () => {
+    keepaVisibleKeys = new Set(KEEPA_FILTER_GROUPS.map((g) => g.key));
+    renderKeepaFilters();
+    renderKeepaFilterModal();
+  });
+  document.getElementById("kfmNone").addEventListener("click", () => {
+    keepaVisibleKeys = new Set();
+    renderKeepaFilters();
+    renderKeepaFilterModal();
+  });
+  // 保存したフィルターを選ぶ：その表示項目に切り替える（選んだパターンは次回も使う）
+  document.getElementById("kfmPattern").addEventListener("change", (e) => {
+    keepaPatternState.current = e.target.value;
+    keepaVisibleKeys = new Set(keepaPatternKeys(keepaPatternState.current));
+    saveKeepaPatternState();
+    renderKeepaFilters();
+    renderKeepaFilterModal();
+  });
+  // 上書き保存：今選んでいるパターンに今の表示項目を保存する（デフォルトは固定なので不可）
+  document.getElementById("kfmSave").addEventListener("click", () => {
+    if (keepaPatternState.current === KEEPA_DEFAULT_PATTERN) {
+      alert("「デフォルト」は上書きできません。「新しいフィルターとして保存」をお使いください。");
+      return;
+    }
+    keepaPatternState.patterns[keepaPatternState.current] = keepaVisibleKeyList();
+    if (saveKeepaPatternState()) renderKeepaFilterModal("保存しました");
+  });
+  // 新しいフィルターとして保存：名前を付けて保存し、そのパターンを選んだ状態にする
+  document.getElementById("kfmSaveAs").addEventListener("click", () => {
+    const name = (prompt("新しいフィルターの名前を入力してください") || "").trim();
+    if (!name) return;
+    if (name === KEEPA_DEFAULT_PATTERN) {
+      alert("「デフォルト」という名前は使えません。");
+      return;
+    }
+    if (keepaPatternState.patterns[name] && !confirm(`「${name}」は既にあります。上書きしますか？`)) return;
+    keepaPatternState.patterns[name] = keepaVisibleKeyList();
+    keepaPatternState.current = name;
+    if (saveKeepaPatternState()) {
+      renderKeepaFilters();
+      renderKeepaFilterModal("保存しました");
+    }
+  });
+  // 削除：今選んでいるパターンを消して、デフォルトに戻す
+  document.getElementById("kfmDelete").addEventListener("click", () => {
+    const cur = keepaPatternState.current;
+    if (cur === KEEPA_DEFAULT_PATTERN || !confirm(`「${cur}」を削除しますか？`)) return;
+    delete keepaPatternState.patterns[cur];
+    keepaPatternState.current = KEEPA_DEFAULT_PATTERN;
+    keepaVisibleKeys = new Set(KEEPA_DEFAULT_KEYS);
+    saveKeepaPatternState();
+    renderKeepaFilters();
+    renderKeepaFilterModal("削除しました");
+  });
+  // 「?」マークのクリックでチェックが切り替わらないようにし、吹き出しだけ出す
+  body.querySelectorAll(".keepa-help").forEach((el) => {
+    el.addEventListener("click", (e) => { e.preventDefault(); el.focus(); });
+  });
 }
 
 // ■メーカー絞り込み（検索つきチェックボックス）
@@ -2128,8 +2360,9 @@ async function loadKeepaMakers() {
   keepaMakers = all;
 }
 
-// 選択状態を hidden の値・ボタンの表示・選択数に反映する
+// 選択状態を hidden の値・ボタンの表示・選択数に反映する（メーカー欄が非表示のときは何もしない）
 function syncKeepaMakerSelected() {
+  if (!document.getElementById("kfMaker")) return;
   const names = [...keepaMakerSelected];
   document.getElementById("kfMaker").value = names.length ? JSON.stringify(names) : "";
   document.getElementById("kfMakerButton").textContent =
@@ -2140,7 +2373,7 @@ function syncKeepaMakerSelected() {
 // 検索欄の文字で一覧を絞って描画する（選択中のメーカーは常に先頭に出す。通信はしない）
 function renderKeepaMakerList() {
   const box = document.getElementById("kfMakerList");
-  if (!keepaMakers) return;
+  if (!keepaMakers || !box) return;
   const kw = document.getElementById("kfMakerSearch").value.trim().toLowerCase();
   const selected = keepaMakers.filter((m) => keepaMakerSelected.has(m["メーカー名"]));
   const hits = keepaMakers.filter((m) => !keepaMakerSelected.has(m["メーカー名"]) &&
@@ -2173,9 +2406,16 @@ function renderKeepaMakerList() {
   });
 }
 
-// メーカー欄の操作（開閉・検索・選択解除・欄の外をクリックで閉じる）を登録する
+// メーカー欄の外をクリックしたらパネルを閉じる（ページ全体で1回だけ登録）
+document.addEventListener("click", (e) => {
+  const panel = document.getElementById("kfMakerPanel");
+  if (panel && !panel.hidden && !e.target.closest(".keepa-maker-field")) panel.hidden = true;
+});
+
+// メーカー欄の操作（開閉・検索・選択解除）を登録する（メーカー欄が表示されているときだけ）
 function wireKeepaMaker() {
   const panel = document.getElementById("kfMakerPanel");
+  if (!panel) return;
   document.getElementById("kfMakerButton").addEventListener("click", async () => {
     panel.hidden = !panel.hidden;
     if (panel.hidden) return;
@@ -2195,22 +2435,36 @@ function wireKeepaMaker() {
     syncKeepaMakerSelected();
     renderKeepaMakerList();
   });
-  document.addEventListener("click", (e) => {
-    if (!panel.hidden && !e.target.closest(".keepa-maker-field")) panel.hidden = true;
-  });
   syncKeepaMakerSelected();
 }
 
 // 検索ボタンを押した時点の絞り込み条件（id→選択値）。ページ送りもこの条件で取得する
 // （プルダウンを変えただけでは通信しない。検索ボタンでまとめて1回だけ取得する）
 let keepaAppliedFilters = {};
+let keepaFiltersRendered = false;
 
-// 絞り込みプルダウンと検索・リセットボタンを描画する
+// 絞り込み欄（フィルター設定ボタン・表示中の項目・表示件数・検索等のボタン）を描画する
+// フィルター設定で表示項目を変えたときも呼ぶ。表示が続く項目は、入力中の値をそのまま残す
 function renderKeepaFilters() {
+  keepaFiltersRendered = true;
   const row = document.getElementById("keepaFilterRow");
-  let html = "";
+  // 描き直す前の入力値（id→値）。チェックボックス欄は hidden の値から復元する
+  const prev = {};
   for (const f of KEEPA_FILTERS) {
-    // テキスト入力の項目（キーワード・小ランキング名）は入力欄、それ以外はプルダウン
+    const el = document.getElementById(f.id);
+    if (el) prev[f.id] = el.value;
+  }
+  const prevPageSize = document.getElementById("kfPageSize")?.value;
+  // メーカー欄を非表示にしたら、メーカーの選択も外す（見えない条件が残らないように）
+  if (!keepaVisibleKeys.has("kfMaker")) keepaMakerSelected.clear();
+
+  // 先頭：フィルター設定ボタンと、今選んでいるフィルター名（未保存の変更があれば＊）
+  let html = `<div class="filter-field keepa-settings-field">` +
+    `<button type="button" class="detail-button keepa-settings-button" id="kfSettings">フィルター設定</button>` +
+    `<span class="keepa-pattern-name">${escapeKeepa(keepaPatternState.current)}${keepaPatternDirty() ? "＊" : ""}</span></div>`;
+  for (const f of KEEPA_FILTERS) {
+    if (!keepaVisibleKeys.has(f.key)) continue;
+    // テキスト入力の項目（キーワード・小ランキング名）は入力欄
     if (f.type === "text") {
       html += `<label class="filter-field">${keepaFilterLabel(f)}` +
         `<input type="text" class="keepa-text-input" id="${f.id}" placeholder="${escapeKeepa(f.placeholder || "")}"></label>`;
@@ -2246,6 +2500,25 @@ function renderKeepaFilters() {
   html += `<button type="button" class="detail-button" id="kfReset">リセット</button>`;
   html += `<button type="button" class="detail-button" id="kfSortClear">並び替え解除</button>`;
   row.innerHTML = html;
+
+  // 入力値を戻す（表示が続く項目だけ）。チェックボックス欄は hidden の値どおりにチェックを付ける
+  for (const f of KEEPA_FILTERS) {
+    const el = document.getElementById(f.id);
+    if (!el || prev[f.id] === undefined || f.type === "maker") continue;
+    el.value = prev[f.id];
+    if (f.type === "checks") {
+      const on = new Set(prev[f.id].split(","));
+      row.querySelectorAll(`input[data-for="${f.id}"]`).forEach((cb) => { cb.checked = on.has(cb.value); });
+    }
+  }
+  if (prevPageSize) document.getElementById("kfPageSize").value = prevPageSize;
+
+  // フィルター設定：ポップアップを開く
+  document.getElementById("kfSettings").addEventListener("click", () => {
+    ensureKeepaFilterModal();
+    renderKeepaFilterModal();
+    document.getElementById("keepaFilterModal").hidden = false;
+  });
   // 並び替え解除：初期（ランキングの良い順のみ）に戻してすぐ取得する（既に初期なら通信しない）
   document.getElementById("kfSortClear").addEventListener("click", () => {
     if (keepaSortIsDefault()) return;
@@ -2261,11 +2534,13 @@ function renderKeepaFilters() {
         .map((x) => x.value).join(",");
     });
   });
-  // 検索：今のプルダウン・入力欄の値を条件として確定し、1ページ目から取得する
+  // 検索：表示中の項目の値を条件として確定し、1ページ目から取得する（非表示の項目は条件に入れない）
   const runSearch = () => {
     keepaAppliedFilters = {};
     for (const f of KEEPA_FILTERS) {
-      const v = document.getElementById(f.id).value.trim();
+      const el = document.getElementById(f.id);
+      if (!el) continue;
+      const v = el.value.trim();
       keepaAppliedFilters[f.id] = v === "" ? "all" : v;
     }
     keepaPageSize = Number(document.getElementById("kfPageSize").value);
@@ -2280,12 +2555,12 @@ function renderKeepaFilters() {
   row.querySelectorAll(".keepa-help").forEach((el) => {
     el.addEventListener("click", (e) => { e.preventDefault(); el.focus(); });
   });
-  // リセット：プルダウンを「全て」、入力欄を空、並び替えを初期、表示件数を30件に戻すだけ
-  // （通信はしない。検索ボタンで反映）
+  // リセット：表示中の項目を「全て」・空に戻し、表示件数を30件に戻すだけ（通信はしない。検索ボタンで反映）
   document.getElementById("kfReset").addEventListener("click", () => {
     for (const f of KEEPA_FILTERS) {
-      if (f.type === "maker") continue;
-      document.getElementById(f.id).value = f.type === "text" || f.type === "checks" ? "" : "all";
+      const el = document.getElementById(f.id);
+      if (!el || f.type === "maker") continue;
+      el.value = f.type === "text" || f.type === "checks" ? "" : "all";
     }
     // チェックボックス（在庫数）も外す
     row.querySelectorAll("input[type=checkbox][data-for]").forEach((cb) => { cb.checked = false; });
@@ -2316,8 +2591,8 @@ function applyKeepaFilters(q) {
 async function loadKeepaPage(page) {
   const caption = document.getElementById("keepaListCaption");
   caption.textContent = "読み込み中...";
-  // 初回だけ絞り込みプルダウンを描画する
-  if (!document.getElementById("kfStock")) renderKeepaFilters();
+  // 初回だけ絞り込み欄を描画する（在庫数欄を非表示にしても毎回描き直さないよう、フラグで判定）
+  if (!keepaFiltersRendered) renderKeepaFilters();
   const from = (page - 1) * keepaPageSize;
   try {
     // ビュー keepa情報_在庫込み（keepa情報＋別テーブル keepa情報_在庫 の在庫数_自社・在庫数_TC）から読む

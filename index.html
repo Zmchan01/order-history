@@ -1864,7 +1864,7 @@ const kPer = (n) => KP.map((p) => n + p);
 const kAvg = (n) => KA.map((p) => n + p);
 const KEEPA_COLUMNS = [
   "ASIN", "在庫数", "売れ筋ポイント", "売れ筋パターン", "想定利益", "想定利益率", "買い時ポイント", "買い時利益",
-  "メーカー名_日", "メーカー名_英", "タイトル", "JAN", "型番", "発売日",
+  "採用_メーカー名", "タイトル", "JAN", "採用_型番", "採用_発売日",
   "大ランキング名", ...kPer("大ランキング順位最大"), ...kPer("大ランキング順位最小"),
   ...kPer("大ランキング下降回数"), ...kPer("高値時ランキング下降回数"),
   "月間販売数", "月間販売数_全期間平均",
@@ -1877,9 +1877,16 @@ const KEEPA_COLUMNS = [
   ...kPer("新品_最大価格"), ...kPer("新品_最小価格"),
   "中古_出品者数", ...kAvg("中古_出品者数"), "中古_最安値", ...kAvg("中古_最安値"),
   ...kPer("中古_最大価格"), ...kPer("中古_最小価格"),
-  "配送サイズ", "配送料金", "梱包サイズ", "製品サイズ", "初回取得日時", "最新取得日時",
+  "配送サイズ", "配送料金", "採用_パッケージサイズ", "採用_商品サイズ", "初回取得日時", "最新取得日時",
   "値崩れなし", "定価超え",
 ];
+// メーカー名・型番・発売日・サイズは、ビューの「採用_○○」（テーブル リサーチ_採用情報 で
+// ハピネ・ホビリ・カワダ・駿河屋・Keepaから優先順位で選んだ値）を使う。表示上の項目名 → ビューの列
+const KEEPA_ADOPTED = {
+  "メーカー名": "採用_メーカー名", "型番": "採用_型番", "発売日": "採用_発売日",
+  "梱包サイズ": "採用_パッケージサイズ", "製品サイズ": "採用_商品サイズ",
+};
+const KEEPA_ADOPTED_LABEL = Object.fromEntries(Object.entries(KEEPA_ADOPTED).map(([k, v]) => [v, k]));
 // 一覧の表に出す列（必要最低限。絞り込み項目と、利益の根拠になる価格）
 // それ以外の項目（ASIN・メーカー名・大ランキング名など）は、行をクリックしたときのポップアップに表示する
 // （取得は KEEPA_COLUMNS 全体で1回）
@@ -1903,8 +1910,8 @@ const KEEPA_SHORT_LABELS = {
 const KEEPA_COLUMN_CHOICES = (() => {
   const all = ["タイトル"];
   for (const c of KEEPA_COLUMNS) {
-    if (c === "タイトル" || c === "メーカー名_英") continue;
-    all.push(c === "メーカー名_日" ? "メーカー名" : c);
+    if (c === "タイトル") continue;
+    all.push(KEEPA_ADOPTED_LABEL[c] || c);
     if (c === "在庫数") all.push("在庫数_自社", "在庫数_TC");
     // 割引率（ビューで計算する列）は参考価格のすぐ後ろ
     if (c === "参考価格") all.push("割引率");
@@ -2098,15 +2105,15 @@ const KEEPA_DETAIL_GROUPS = [
   ["基本", [
     ["タイトル", ["タイトル"]],
     ["JAN", ["JAN"]],
-    ["メーカー名(日/英)", ["メーカー名_日", "メーカー名_英"]],
-    ["型番", ["型番"]],
-    ["発売日", ["発売日"]],
+    ["メーカー名", ["採用_メーカー名"]],
+    ["型番", ["採用_型番"]],
+    ["発売日", ["採用_発売日"]],
     ["大ランキング名", ["大ランキング名"]],
     ["小ランキング名", ["小ランキング名"]],
     ["参考価格", ["参考価格"]],
     ["配送サイズ/配送料金", ["配送サイズ", "配送料金"]],
-    ["梱包サイズ", ["梱包サイズ"]],
-    ["製品サイズ", ["製品サイズ"]],
+    ["パッケージサイズ", ["採用_パッケージサイズ"]],
+    ["商品サイズ", ["採用_商品サイズ"]],
   ]],
   // 在庫：stockdbの更新在庫数・在庫数_自社、最新TCファイルの在庫（keepa情報_在庫数反映.py で毎日19:30に反映）
   ["在庫", [
@@ -2159,10 +2166,9 @@ const KEEPA_DETAIL_GROUPS = [
   ["判定", [["値崩れなし/定価超え", ["値崩れなし", "定価超え"]]]],
   ["取得日時", [["初回/最新", ["初回取得日時", "最新取得日時"]]]],
 ];
-// 表示列の値を行から取り出す（メーカー名だけは日→英の順で採用）
+// 表示列の値を行から取り出す（メーカー名・型番・発売日・サイズは採用_○○の列）
 function keepaValue(r, col) {
-  if (col === "メーカー名") return r["メーカー名_日"] || r["メーカー名_英"];
-  return r[col];
+  return r[KEEPA_ADOPTED[col] || col];
 }
 // 文字のカラム（左寄せ）と、長くなりやすいカラム（幅を制限して…で省略）
 const KEEPA_TEXT_COLUMNS = new Set([
@@ -2204,8 +2210,8 @@ function rangeFilters(idBase, label, column, steps, unitText) {
 // 検索ボタンを押しても並び替えはそのまま
 const KEEPA_DEFAULT_SORTS = [{ col: "大ランキング順位最小_7日", asc: true }];
 let keepaSorts = KEEPA_DEFAULT_SORTS.map((s) => ({ ...s }));
-// 表示列名 → DBのカラム（メーカー名は日本語名のカラムで並べる）
-const keepaSortDbCol = (col) => (col === "メーカー名" ? "メーカー名_日" : col);
+// 表示列名 → DBのカラム（メーカー名・型番・発売日・サイズは採用_○○の列で並べる）
+const keepaSortDbCol = (col) => KEEPA_ADOPTED[col] || col;
 // 並び替えの説明文（例：売れ筋ポイントの降順 → 想定利益の降順）
 const keepaSortLabel = () => keepaSorts.map((s) => `${s.col}の${s.asc ? "昇順" : "降順"}`).join(" → ");
 // ▲▼ボタンを押したときの並び替えの更新
@@ -2237,10 +2243,10 @@ const KEEPA_FILTERS = [
     ors: (v) => {
       const kw = v === "all" ? "" : cleanKeyword(v);
       if (!kw) return null;
-      return ["ASIN", "タイトル", "メーカー名_日", "メーカー名_英", "型番", "JAN"].map((c) => `${c}.ilike."*${kw}*"`).join(",");
+      return ["ASIN", "タイトル", "採用_メーカー名", "採用_型番", "JAN"].map((c) => `${c}.ilike."*${kw}*"`).join(",");
     } },
   // メーカー：検索つきチェックボックスで複数選択（値は選んだメーカー名のJSON配列）
-  // 表示上のメーカー名＝日本語名があれば日本語名、無ければ英語名、なので条件も同じ考え方にする
+  // 表示上のメーカー名＝採用_メーカー名（ハピネ→ホビリ→駿河屋→Keepaの順で選んだ値）なので条件も同じ列にする
   { key: "kfMaker", id: "kfMaker", label: "メーカー", type: "maker",
     apply: (q) => q,
     ors: (v) => {
@@ -2249,7 +2255,7 @@ const KEEPA_FILTERS = [
       if (!names.length) return null;
       // PostgRESTの in.() に入れるため、各名前を "..." で囲む（中の " と \ はエスケープ）
       const list = names.map((s) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",");
-      return `メーカー名_日.in.(${list}),and(メーカー名_日.is.null,メーカー名_英.in.(${list}))`;
+      return `採用_メーカー名.in.(${list})`;
     } },
   // 在庫数：取引先（トイセンター＝在庫数_TC）・自社のチェックボックス。チェックしたところのどれかに在庫が1以上ある商品を出す
   // （値はチェックしたカラム名の「,」区切り。何もチェックしなければ絞り込まない）
@@ -2280,10 +2286,10 @@ const KEEPA_FILTERS = [
   // 発売日：年の範囲指定（下限年の1月1日以降〜上限年の12月31日以前）。指定すると発売日が空欄の商品は除かれる
   { key: "kfRelease", id: "kfReleaseMin", label: "発売日", range: "start",
     options: [["all", "下限なし"], ...RELEASE_YEARS.map((y) => [String(y), `${y}年`])],
-    apply: (q, v) => (v === "all" ? q : q.gte("発売日", `${v}-01-01`)) },
+    apply: (q, v) => (v === "all" ? q : q.gte("採用_発売日", `${v}-01-01`)) },
   { key: "kfRelease", id: "kfReleaseMax", label: "〜", range: "end",
     options: [["all", "上限なし"], ...RELEASE_YEARS.map((y) => [String(y), `${y}年`])],
-    apply: (q, v) => (v === "all" ? q : q.lte("発売日", `${v}-12-31`)) },
+    apply: (q, v) => (v === "all" ? q : q.lte("採用_発売日", `${v}-12-31`)) },
   // 小ランキング名：種類が多いためテキスト入力で一部一致
   { key: "kfSubCategory", id: "kfSubCategory", label: "小ランキング名", type: "text", placeholder: "例：人形、プラモデル",
     apply: (q, v) => {
@@ -2932,7 +2938,7 @@ function keepaCellText(col, v) {
   // 値崩れなし・定価超え（true/false）は、当てはまるときだけ「○」を出す
   if (typeof v === "boolean") return v ? "○" : "";
   // 発売日は「2024-03-15」で届くので「2024/03/15」に整える
-  if (col === "発売日") return String(v).replace(/-/g, "/");
+  if (col === "発売日" || col === "採用_発売日") return String(v).replace(/-/g, "/");
   if (KEEPA_DATE_COLUMNS.has(col)) return new Date(v).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
   if (typeof v === "number") return v.toLocaleString();
   return String(v);

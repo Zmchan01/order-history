@@ -1869,7 +1869,7 @@ const KEEPA_COLUMNS = [
   ...kPer("大ランキング下降回数"), ...kPer("高値時ランキング下降回数"),
   "月間販売数", "月間販売数_全期間平均",
   "小ランキング名", ...kPer("小ランキング順位最大"), ...kPer("小ランキング順位最小"),
-  "参考価格", ...kPer("Amazon在庫切れ率"), ...kPer("Amazon在庫切れ回数"),
+  "採用_定価", ...kPer("Amazon在庫切れ率"), ...kPer("Amazon在庫切れ回数"),
   "Amazon価格", ...kPer("Amazon最大価格"), ...kPer("Amazon最小価格"),
   "トップカート価格", ...kAvg("トップカート価格"),
   ...kPer("トップカート最大価格"), ...kPer("トップカート最小価格"), ...kPer("高値期間割合"),
@@ -1885,6 +1885,8 @@ const KEEPA_COLUMNS = [
 const KEEPA_ADOPTED = {
   "メーカー名": "採用_メーカー名", "型番": "採用_型番", "発売日": "採用_発売日",
   "梱包サイズ": "採用_パッケージサイズ", "製品サイズ": "採用_商品サイズ",
+  // 参考価格（定価）は税込の採用_定価（ハピネ→ホビリ→カワダ→駿河屋→Keepaの参考価格×1.1）
+  "参考価格": "採用_定価",
 };
 const KEEPA_ADOPTED_LABEL = Object.fromEntries(Object.entries(KEEPA_ADOPTED).map(([k, v]) => [v, k]));
 // 一覧の表に出す列（必要最低限。絞り込み項目と、利益の根拠になる価格）
@@ -1911,10 +1913,11 @@ const KEEPA_COLUMN_CHOICES = (() => {
   const all = ["タイトル"];
   for (const c of KEEPA_COLUMNS) {
     if (c === "タイトル") continue;
-    all.push(KEEPA_ADOPTED_LABEL[c] || c);
+    const label = KEEPA_ADOPTED_LABEL[c] || c;
+    all.push(label);
     if (c === "在庫数") all.push("在庫数_自社", "在庫数_TC");
-    // 割引率（ビューで計算する列）は参考価格のすぐ後ろ
-    if (c === "参考価格") all.push("割引率");
+    // 割引率（ビューで計算する列）は参考価格（定価）のすぐ後ろ
+    if (label === "参考価格") all.push("割引率");
   }
   return [...KEEPA_DISPLAY_COLUMNS, ...all.filter((c) => !KEEPA_DISPLAY_COLUMNS.includes(c))];
 })();
@@ -2110,7 +2113,7 @@ const KEEPA_DETAIL_GROUPS = [
     ["発売日", ["採用_発売日"]],
     ["大ランキング名", ["大ランキング名"]],
     ["小ランキング名", ["小ランキング名"]],
-    ["参考価格", ["参考価格"]],
+    ["定価(税込)", ["採用_定価"]],
     ["配送サイズ/配送料金", ["配送サイズ", "配送料金"]],
     ["パッケージサイズ", ["採用_パッケージサイズ"]],
     ["商品サイズ", ["採用_商品サイズ"]],
@@ -2296,7 +2299,7 @@ const KEEPA_FILTERS = [
       const kw = v === "all" ? "" : cleanKeyword(v);
       return kw ? q.ilike("小ランキング名", `%${kw}%`) : q;
     } },
-  ...rangeFilters("kfList", "参考価格(仕入れ)", "参考価格", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
+  ...rangeFilters("kfList", "参考価格(仕入れ)", "採用_定価", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
   ...rangeFilters("kfSell", "販売価格(30日平均)", "新品_最安値_平均30日", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
   // 割引率：参考価格に対して今の新品最安値が何%安いか（ビュー keepa情報_在庫込み で計算。参考価格が無い商品は除かれる）
   { key: "kfDiscount", id: "kfDiscount", label: "割引率",
@@ -2355,9 +2358,9 @@ const KEEPA_FILTER_HELP = {
   kfPattern: "Amazon本体の出品状況（不在・在庫切れあり・常駐）で絞る",
   kfRelease: "発売された年の範囲で、新しい商品・古い商品に絞る",
   kfSubCategory: "細かいジャンル（小ランキング名）の一部の文字で絞る",
-  kfList: "仕入れ値の目安（参考価格＝定価）の価格帯で絞る",
+  kfList: "仕入れ値の目安（定価・税込）の価格帯で絞る",
   kfSell: "売値の目安（新品最安値の30日平均）の価格帯で絞る",
-  kfDiscount: "定価（参考価格）に対して今の新品最安値が何%安いか（50%以上＝半額以下で買える）",
+  kfDiscount: "定価（税込）に対して今の新品最安値が何%安いか（50%以上＝半額以下で買える）",
   kfMonthly: "Amazonの「過去1か月の購入数」で絞る（よく売れる商品にだけ値がある）",
   kfDrops90: "長い期間（90日）で安定して売れているか",
   kfDrops7: "直近7日に売れているか（今も売れているか）",

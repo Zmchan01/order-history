@@ -2408,10 +2408,12 @@ function keepaGroupedChecksHtml(items, categories, groupOf) {
     list.map((it) => `<label class="keepa-fm-item"><input type="checkbox" value="${escapeKeepa(it.value)}"${it.checked ? " checked" : ""}>` +
       `<span>${escapeKeepa(it.label)}</span>${it.help || ""}</label>`).join("") + `</div></div>`).join("");
 }
-// 「デフォルト」パターン＝これまでの絞り込み欄と同じ10項目（コードで固定。上書き・削除はできない）
+// 「デフォルト」パターン＝10項目＋値（旧フィルター「あ」の内容。コードで固定。上書き・削除はできない）
+// 値：売れ筋ポイント70点〜・想定利益1,500円〜・大ランキング名おもちゃ・売れた回数(30日)8回以上（在庫数はチェックなし）
 const KEEPA_DEFAULT_PATTERN = "デフォルト";
 const KEEPA_DEFAULT_KEYS = ["kfKeyword", "kfMaker", "kfStock", "kfScore", "kfProfit", "kfBuy", "kfBuyProfit",
   "kfCategory", "kfDrops30", "kfSellers"];
+const KEEPA_DEFAULT_VALUES = { kfScoreMin: "70", kfProfitMin: "1500", kfCategory: "おもちゃ", kfDrops30: "8" };
 // 用途別の固定パターン（コードで固定。上書き・削除はできない）
 // keys＝表示する項目、values＝選んだときに入れる条件（id→値。書いていない項目は「全て」・空に戻す）
 const KEEPA_PRESET_PATTERNS = {
@@ -2516,8 +2518,9 @@ function keepaPatternKeys(name) {
   const valid = new Set(KEEPA_FILTER_GROUPS.map((g) => g.key));
   return (keys || KEEPA_DEFAULT_KEYS).filter((k) => valid.has(k));
 }
-// パターン名 → 選んだときに絞り込み欄へ入れる値（id→値）。値を持たないパターン（デフォルト・以前の保存形式）は null
+// パターン名 → 選んだときに絞り込み欄へ入れる値（id→値）。値を持たないパターン（以前の保存形式）は null
 function keepaPatternValues(name) {
+  if (name === KEEPA_DEFAULT_PATTERN) return KEEPA_DEFAULT_VALUES;
   if (KEEPA_PRESET_PATTERNS[name]) return KEEPA_PRESET_PATTERNS[name].values;
   const saved = keepaPatternState.patterns[name];
   return saved && !Array.isArray(saved) && saved.values ? saved.values : null;

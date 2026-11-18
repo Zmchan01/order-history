@@ -2434,7 +2434,8 @@ const KEEPA_PRESET_PATTERNS = {
 };
 // 上書き・削除できないパターン名（デフォルト＋固定パターン）
 const keepaIsFixedPattern = (name) => name === KEEPA_DEFAULT_PATTERN || !!KEEPA_PRESET_PATTERNS[name];
-// 保存したパターン（{patterns: {名前: {keys: [key, ...], values: {id: 値}}}, current: 今選んでいる名前}）はこのブラウザに保存する
+// 保存したパターン（{patterns: {名前: {keys: [key, ...], values: {id: 値}}}, current: 今選んでいる名前}）
+// patterns はDB（リサーチ_フィルター保存）から読み込み、ブラウザには current（今選んでいる名前）だけを保存する
 // values＝保存した時点の絞り込み欄の値（売れ筋ポイント・想定利益・メーカーの選択・キーワード等）。送信で絞り込み欄に戻す
 // （以前の保存形式 {名前: [key, ...]}（値なし）もそのまま読める。ブラウザごと・端末ごとの保存。読み書きできない環境でも動くよう try で囲む）
 const KEEPA_PATTERN_STORAGE = "keepaFilterPatterns_v1";
@@ -2445,16 +2446,67 @@ function loadKeepaPatternState() {
   } catch (e) { /* 読めなければ初期状態 */ }
   return { patterns: {}, current: KEEPA_DEFAULT_PATTERN };
 }
+// ブラウザには「今選んでいるフィルター名」だけを残す（保存したフィルター自体はDBの リサーチ_フィルター保存）
+// DBから読み込めなかったときは、ブラウザに残っているフィルターを消さないようそのまま保存する
 function saveKeepaPatternState() {
   try {
-    localStorage.setItem(KEEPA_PATTERN_STORAGE, JSON.stringify(keepaPatternState));
-    return true;
-  } catch (e) {
-    alert("このブラウザでは保存できませんでした（プライベートモード等）。");
-    return false;
-  }
+    const toSave = keepaPatternsLoaded ? { patterns: {}, current: keepaPatternState.current } : keepaPatternState;
+    localStorage.setItem(KEEPA_PATTERN_STORAGE, JSON.stringify(toSave));
+  } catch (e) { /* 保存できない環境（プライベートモード等）でも動かす */ }
+  return true;
 }
 let keepaPatternState = loadKeepaPatternState();
+
+// ■保存したフィルターはDB（テーブル リサーチ_フィルター保存）に置き、どの端末から開いても同じものを使う
+// 1行＝1フィルター（名前、項目＝表示する項目のkeyの配列、値＝絞り込み欄の値）。ログイン済みユーザー全員で共通
+const KEEPA_FILTER_TABLE = "リサーチ_フィルター保存";
+let keepaPatternsLoaded = false;
+// 売れ筋タブを初めて開いたときに1回だけ読み込む
+// 以前このブラウザに保存していたフィルター（DBに同じ名前が無いもの）は、このときDBへ移す
+async function loadKeepaSavedPatterns() {
+  if (keepaPatternsLoaded) return;
+  try {
+    const { data, error } = await supabaseClient.from(KEEPA_FILTER_TABLE).select("名前,項目,値");
+    if (error) throw error;
+    const db = {};
+    for (const r of data) db[r["名前"]] = { keys: r["項目"] || [], values: r["値"] || {} };
+    const moves = [];
+    for (const [name, p] of Object.entries(keepaPatternState.patterns || {})) {
+      if (db[name] || keepaIsFixedPattern(name)) continue;
+      const obj = Array.isArray(p) ? { keys: p, values: {} } : { keys: p.keys || [], values: p.values || {} };
+      db[name] = obj;
+      moves.push({ "名前": name, "項目": obj.keys, "値": obj.values });
+    }
+    if (moves.length) {
+      const { error: e2 } = await supabaseClient.from(KEEPA_FILTER_TABLE).upsert(moves);
+      if (e2) throw e2;
+    }
+    keepaPatternState.patterns = db;
+    keepaPatternsLoaded = true;
+    saveKeepaPatternState();
+  } catch (e) {
+    console.error(e);
+    alert("保存したフィルターの読み込みに失敗しました: " + e.message);
+  }
+  // 選んでいたフィルターが無くなっていたらデフォルトに戻し、表示する項目を決め直す
+  if (!keepaIsFixedPattern(keepaPatternState.current) && !keepaPatternState.patterns[keepaPatternState.current]) {
+    keepaPatternState.current = KEEPA_DEFAULT_PATTERN;
+  }
+  keepaVisibleKeys = new Set(keepaPatternKeys(keepaPatternState.current));
+}
+// 1つのフィルターをDBに保存（同じ名前があれば上書き）。失敗したら false
+async function saveKeepaPatternToDb(name, p) {
+  const { error } = await supabaseClient.from(KEEPA_FILTER_TABLE)
+    .upsert({ "名前": name, "項目": p.keys, "値": p.values, "更新日時": new Date().toISOString() });
+  if (error) { alert("保存に失敗しました: " + error.message); return false; }
+  return true;
+}
+// 1つのフィルターをDBから削除。失敗したら false
+async function deleteKeepaPatternFromDb(name) {
+  const { error } = await supabaseClient.from(KEEPA_FILTER_TABLE).delete().eq("名前", name);
+  if (error) { alert("削除に失敗しました: " + error.message); return false; }
+  return true;
+}
 // パターン名 → 表示する項目のkey（存在しない項目のkeyは除く）
 function keepaPatternKeys(name) {
   const saved = keepaPatternState.patterns[name];
@@ -2570,20 +2622,23 @@ function renderKeepaFilterModal(status = "") {
     keepaFmDraft.picked = true;
     renderKeepaFilterModal();
   });
-  // 上書き保存：選んでいるフィルターに今のチェック状態を保存する（デフォルト・固定パターンは不可）。反映は送信で
-  document.getElementById("kfmSave").addEventListener("click", () => {
-    if (keepaIsFixedPattern(keepaFmDraft.pattern)) {
-      alert(`「${keepaFmDraft.pattern}」は上書きできません。「新しいフィルターとして保存」をお使いください。`);
+  // 上書き保存：確認のうえ、選んでいるフィルターに今のチェック状態と絞り込み欄の値をDBへ保存する
+  // （デフォルト・固定パターンは不可）。反映は送信で
+  document.getElementById("kfmSave").addEventListener("click", async () => {
+    const name = keepaFmDraft.pattern;
+    if (keepaIsFixedPattern(name)) {
+      alert(`「${name}」は上書きできません。「新しいフィルターとして保存」をお使いください。`);
       return;
     }
-    keepaPatternState.patterns[keepaFmDraft.pattern] = keepaPatternToSave(keepaFmDraftKeyList());
-    if (saveKeepaPatternState()) {
-      renderKeepaFilters();   // 絞り込み欄のフィルター名の「＊」（未保存の印）を更新するだけ
-      renderKeepaFilterModal("保存しました（「送信」で反映）");
-    }
+    if (!confirm(`「${name}」の絞り込み内容に変更を加えても良いですか？`)) return;
+    const p = keepaPatternToSave(keepaFmDraftKeyList());
+    if (!(await saveKeepaPatternToDb(name, p))) return;
+    keepaPatternState.patterns[name] = p;
+    renderKeepaFilters();   // 絞り込み欄のフィルター名の「＊」（未保存の印）を更新するだけ
+    renderKeepaFilterModal("保存しました（「送信」で反映）");
   });
   // 新しいフィルターとして保存：名前を付けて保存し、そのフィルターを選んだ状態にする。反映は送信で
-  document.getElementById("kfmSaveAs").addEventListener("click", () => {
+  document.getElementById("kfmSaveAs").addEventListener("click", async () => {
     const name = (prompt("新しいフィルターの名前を入力してください") || "").trim();
     if (!name) return;
     if (keepaIsFixedPattern(name)) {
@@ -2591,15 +2646,18 @@ function renderKeepaFilterModal(status = "") {
       return;
     }
     if (keepaPatternState.patterns[name] && !confirm(`「${name}」は既にあります。上書きしますか？`)) return;
-    keepaPatternState.patterns[name] = keepaPatternToSave(keepaFmDraftKeyList());
+    const p = keepaPatternToSave(keepaFmDraftKeyList());
+    if (!(await saveKeepaPatternToDb(name, p))) return;
+    keepaPatternState.patterns[name] = p;
     keepaFmDraft.pattern = name;
-    if (saveKeepaPatternState()) renderKeepaFilterModal("保存しました（「送信」で反映）");
+    renderKeepaFilterModal("保存しました（「送信」で反映）");
   });
   // 削除：選んでいるフィルターを消して、下書きをデフォルトに戻す
   // （今、絞り込み欄で使っているフィルターを消したときは、表示はそのままで名前だけデフォルトにする）
-  document.getElementById("kfmDelete").addEventListener("click", () => {
+  document.getElementById("kfmDelete").addEventListener("click", async () => {
     const name = keepaFmDraft.pattern;
     if (keepaIsFixedPattern(name) || !confirm(`「${name}」を削除しますか？`)) return;
+    if (!(await deleteKeepaPatternFromDb(name))) return;
     delete keepaPatternState.patterns[name];
     if (keepaPatternState.current === name) keepaPatternState.current = KEEPA_DEFAULT_PATTERN;
     keepaFmDraft.pattern = KEEPA_DEFAULT_PATTERN;
@@ -2928,6 +2986,8 @@ async function loadKeepaPage(page) {
   caption.textContent = "読み込み中...";
   // 初回だけ絞り込み欄を描画する（在庫数欄を非表示にしても毎回描き直さないよう、フラグで判定）
   if (!keepaFiltersRendered) {
+    // 保存したフィルター（DB）を読み込んでから、選んでいたフィルターの項目で描画する
+    await loadKeepaSavedPatterns();
     renderKeepaFilters();
     // 前回、値を持つパターン（売価更新用等・値を保存したパターン）を選んでいたら、その条件で最初から取得する
     if (applyKeepaPatternValues(keepaPatternState.current)) keepaAppliedFilters = collectKeepaFilters();

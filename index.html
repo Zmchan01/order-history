@@ -2900,6 +2900,7 @@ function renderKeepaFilters() {
   html += `<button type="button" class="detail-button keepa-search-button" id="kfSearch">検索</button>`;
   html += `<button type="button" class="detail-button" id="kfReset">リセット</button>`;
   html += `<button type="button" class="detail-button" id="kfSortClear">並び替え解除</button>`;
+  html += `<button type="button" class="detail-button" id="kfDownload">txtダウンロード</button>`;
   row.innerHTML = html;
 
   // 入力値を戻す（表示が続く項目だけ）。チェックボックス欄は hidden の値どおりにチェックを付ける
@@ -2927,6 +2928,8 @@ function renderKeepaFilters() {
     keepaSorts = KEEPA_DEFAULT_SORTS.map((s) => ({ ...s }));
     loadKeepaPage(1);
   });
+  // txtダウンロード：検索で確定した絞り込み結果の全件をtxtで保存する
+  document.getElementById("kfDownload").addEventListener("click", (e) => downloadKeepaTxt(e.currentTarget));
   wireKeepaMaker();
   // チェックボックスを付け外ししたら、チェックしている値を hidden の入力欄に「,」区切りで入れる
   row.querySelectorAll("input[type=checkbox][data-for]").forEach((cb) => {
@@ -3021,6 +3024,55 @@ async function loadKeepaPage(page) {
   } catch (e) {
     caption.textContent = "読み込みに失敗しました: " + e.message;
     console.error(e);
+  }
+}
+
+// ■絞り込み結果のtxtダウンロード
+// 検索ボタンで確定した条件（一覧と同じ条件・同じ並び順）の全件を、1000件ずつ取得してtxtにする
+// 項目：商品名・JAN・個数（常に0）・メーカー名（採用_メーカー名）・定価（採用_定価＝税込）
+// 形式：タブ区切り・1行目に見出し・UTF-8（BOM付き。Excel・メモ帳で文字化けしないように）
+// JANが複数ある商品は先頭のJANだけを出す。商品名の中のタブ・改行は空白に置き換える
+const KEEPA_TXT_CONFIRM_OVER = 10000;   // これより多いときは、取得に時間がかかるので確認する
+async function downloadKeepaTxt(btn) {
+  if (!keepaLoaded) { alert("先に検索して一覧を表示してください。"); return; }
+  if (!keepaTotal) { alert("ダウンロードする商品がありません。"); return; }
+  if (keepaTotal > KEEPA_TXT_CONFIRM_OVER &&
+      !confirm(`${keepaTotal.toLocaleString()}件あります。取得に時間がかかりますが、ダウンロードしますか？`)) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  const cell = (v) => (v == null ? "" : String(v).replace(/[\t\r\n]+/g, " ").trim());
+  const lines = [["商品名", "JAN", "個数", "メーカー名", "定価"].join("\t")];
+  try {
+    for (let from = 0; ; from += 1000) {
+      btn.textContent = `取得中 ${from.toLocaleString()}/${keepaTotal.toLocaleString()}`;
+      let q = supabaseClient.from("keepa情報_在庫込み").select("ASIN,タイトル,JAN,採用_メーカー名,採用_定価");
+      q = applyKeepaFilters(q);
+      for (const s of keepaSorts) q = q.order(keepaSortDbCol(s.col), { ascending: s.asc, nullsFirst: false });
+      const { data, error } = await q.order("ASIN").range(from, from + 999);
+      if (error) throw error;
+      for (const r of data) {
+        const jan = (String(r["JAN"] || "").match(/\d{8,14}/) || [""])[0];
+        lines.push([cell(r["タイトル"]), jan, "0", cell(r["採用_メーカー名"]), cell(r["採用_定価"])].join("\t"));
+      }
+      if (data.length < 1000) break;
+    }
+    // ファイル名：売れ筋_年月日_時分.txt（日本時間）
+    const now = new Date(Date.now() + 9 * 3600 * 1000).toISOString();
+    const name = `売れ筋_${now.slice(0, 10).replace(/-/g, "")}_${now.slice(11, 16).replace(":", "")}.txt`;
+    const blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (e) {
+    alert("ダウンロードに失敗しました: " + e.message);
+    console.error(e);
+  } finally {
+    btn.textContent = label;
+    btn.disabled = false;
   }
 }
 

@@ -2688,7 +2688,7 @@ function renderKeepaFilterModal(status = "") {
 }
 
 // ■メーカー絞り込み（検索つきチェックボックス）
-// メーカー一覧（[{メーカー名, 件数}]）は「keepa情報_メーカー一覧」ビューから、初めて欄を開いたときに1回だけ取得
+// メーカー一覧（[{メーカー名, 件数}]）はテーブル「リサーチ_メーカー一覧」（毎日19:30に件数を書き込み）から、初めて欄を開いたときに1回だけ取得
 let keepaMakers = null;
 const keepaMakerSelected = new Set();
 const KEEPA_MAKER_MAX_SELECT = 50;   // 条件文が長くなりすぎないよう、選べる数の上限
@@ -2706,12 +2706,12 @@ function keepaMakerFieldHtml(f) {
     `<div class="keepa-maker-list" id="kfMakerList">読み込み中...</div></div></div>`;
 }
 
-// メーカー一覧をビューから取得する（1回の取得上限が1000行のため、1000行ずつ分けて取得）
+// メーカー一覧をテーブルから取得する（1回の取得上限が1000行のため、1000行ずつ分けて取得）
 async function loadKeepaMakers() {
   const all = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabaseClient
-      .from("keepa情報_メーカー一覧")
+      .from("リサーチ_メーカー一覧")
       .select("メーカー名,件数")
       .order("件数", { ascending: false })
       .order("メーカー名")

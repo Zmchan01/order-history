@@ -2207,6 +2207,26 @@ function rangeFilters(idBase, label, column, steps, unitText) {
       apply: (q, v) => (v === "all" ? q : q.lte(column, Number(v))) },
   ];
 }
+// 出品者数（新品・中古）の範囲指定：空欄（出品者が居ない）は0人として扱う。指定したときは未取得の行を除く
+// 下限0人は「空欄も含む全部」、下限1人以上は空欄を含まない。上限は「空欄 または ○人以下」
+const SELLER_STEPS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30];
+function sellerRangeFilters(idBase, label, column) {
+  const opts = (none) => [["all", none], ...SELLER_STEPS.map((n) => [String(n), `${n}人`])];
+  const fetched = (q) => q.not("初回取得日時", "is", null);
+  return [
+    { key: idBase, id: idBase + "Min", label, range: "start", options: opts("下限なし"),
+      apply: (q, v) => (v === "all" ? q : Number(v) === 0 ? fetched(q) : q.gte(column, Number(v))) },
+    { key: idBase, id: idBase + "Max", label: "〜", range: "end", options: opts("上限なし"),
+      apply: (q, v) => (v === "all" ? q : fetched(q)),
+      ors: (v) => (v === "all" ? null : `${column}.is.null,${column}.lte.${Number(v)}`) },
+  ];
+}
+// 範囲指定の選択肢（回数・個数・順位）
+const DROP30_STEPS = [0, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 45, 60];
+const DROP90_STEPS = [0, 3, 6, 12, 18, 24, 30, 45, 60, 90, 135, 180];
+const HIGH30_STEPS = [0, 1, 2, 3, 4, 5, 10, 15, 20, 30];
+const MONTHLY_STEPS = [0, 10, 20, 30, 50, 100, 200, 300, 500, 1000];
+const RANK_STEPS = [1000, 3000, 5000, 10000, 20000, 30000, 50000, 100000, 200000, 300000, 500000];
 // 並び替え：一覧の各項目名の ▲（昇順）／▼（降順）ボタンで複数指定できる（[{col: 表示列名, asc: 昇順か}, ...]）
 // 先に選んだ項目ほど優先（1番目で並べ、同じ値なら2番目、それも同じなら3番目…）
 // 初期はランキングの良い順（大ランキング順位最小_7日＝直近7日で一番良かった順位の昇順）のみ
@@ -2274,14 +2294,9 @@ const KEEPA_FILTERS = [
   { key: "kfCategory", id: "kfCategory", label: "大ランキング名",
     options: [["all", "全て"], ...KEEPA_CATEGORIES.map((c) => [c, c])],
     apply: (q, v) => (v === "all" ? q : q.eq("大ランキング名", v)) },
-  { key: "kfDrops30", id: "kfDrops30", label: "売れた回数(30日)",
-    options: [["all", "全て"], ["15", "15回以上"], ["8", "8回以上"], ["4", "4回以上"], ["1", "1回以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("大ランキング下降回数_30日", Number(v))) },
+  ...rangeFilters("kfDrops30", "売れた回数(30日)", "大ランキング下降回数_30日", DROP30_STEPS, (n) => `${n}回`),
   // 新品出品者数：空欄（出品者が居ない）も「0人」扱いで含める。未取得の行は除く
-  { key: "kfSellers", id: "kfSellers", label: "新品出品者数",
-    options: [["all", "全て"], ["0", "0人"], ["3", "3人以下"], ["5", "5人以下"], ["10", "10人以下"]],
-    apply: (q, v) => (v === "all" ? q : q.not("初回取得日時", "is", null)),
-    ors: (v) => (v === "all" ? null : `新品_出品者数.is.null,新品_出品者数.lte.${Number(v)}`) },
+  ...sellerRangeFilters("kfSellers", "新品出品者数", "新品_出品者数"),
   // ここから下は、初期（デフォルト）では表示しない項目（フィルター設定でチェックすると表示）
   { key: "kfPattern", id: "kfPattern", label: "売れ筋パターン",
     options: [["all", "全て"], ["Amazon不在", "Amazon不在"], ["Amazon在庫切れあり", "Amazon在庫切れあり"], ["Amazon常駐", "Amazon常駐"]],
@@ -2302,41 +2317,26 @@ const KEEPA_FILTERS = [
   ...rangeFilters("kfList", "参考価格(仕入れ)", "採用_定価", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
   ...rangeFilters("kfSell", "販売価格(30日平均)", "新品_最安値_平均30日", PRICE_STEPS, (n) => `${n.toLocaleString()}円`),
   // 割引率：参考価格に対して今の新品最安値が何%安いか（ビュー keepa情報_在庫込み で計算。参考価格が無い商品は除かれる）
-  { key: "kfDiscount", id: "kfDiscount", label: "割引率",
-    options: [["all", "全て"], ["30", "30%以上"], ["40", "40%以上"], ["50", "50%以上(半額以下)"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("割引率", Number(v))) },
-  { key: "kfMonthly", id: "kfMonthly", label: "月間販売数",
-    options: [["all", "全て"], ["100", "100個以上"], ["50", "50個以上"], ["30", "30個以上"], ["10", "10個以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("月間販売数", Number(v))) },
-  { key: "kfDrops90", id: "kfDrops90", label: "売れた回数(90日)",
-    options: [["all", "全て"], ["45", "45回以上"], ["24", "24回以上"], ["12", "12回以上"], ["3", "3回以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("大ランキング下降回数_90日", Number(v))) },
+  ...rangeFilters("kfDiscount", "割引率", "割引率", PERCENT_STEPS, (n) => `${n}%`),
+  ...rangeFilters("kfMonthly", "月間販売数", "月間販売数", MONTHLY_STEPS, (n) => `${n.toLocaleString()}個`),
+  ...rangeFilters("kfDrops90", "売れた回数(90日)", "大ランキング下降回数_90日", DROP90_STEPS, (n) => `${n}回`),
   // 直近7日の売れ：「売れなし」は下降回数が空欄か0の行（未取得の行は除く）
   { key: "kfDrops7", id: "kfDrops7", label: "直近7日の売れ", options: [["all", "全て"], ["yes", "売れあり"], ["no", "売れなし"]],
     apply: (q, v) => (v === "yes" ? q.gte("大ランキング下降回数_7日", 1) : v === "no" ? q.not("初回取得日時", "is", null) : q),
     ors: (v) => (v === "no" ? "大ランキング下降回数_7日.is.null,大ランキング下降回数_7日.eq.0" : null) },
-  { key: "kfHigh30", id: "kfHigh30", label: "高値で売れた回数(30日)",
-    options: [["all", "全て"], ["5", "5回以上"], ["3", "3回以上"], ["1", "1回以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("高値時ランキング下降回数_30日", Number(v))) },
-  { key: "kfHighRate30", id: "kfHighRate30", label: "高値期間割合(30日)",
-    options: [["all", "全て"], ["80", "80%以上"], ["50", "50%以上"], ["30", "30%以上"], ["10", "10%以上"]],
-    apply: (q, v) => (v === "all" ? q : q.gte("高値期間割合_30日", Number(v))) },
+  ...rangeFilters("kfHigh30", "高値で売れた回数(30日)", "高値時ランキング下降回数_30日", HIGH30_STEPS, (n) => `${n}回`),
+  ...rangeFilters("kfHighRate30", "高値期間割合(30日)", "高値期間割合_30日", PERCENT_STEPS, (n) => `${n}%`),
   { key: "kfNoDrop", id: "kfNoDrop", label: "値崩れなし", options: [["all", "全て"], ["yes", "値崩れなしのみ"]],
     apply: (q, v) => (v === "yes" ? q.eq("値崩れなし", true) : q) },
   { key: "kfOverList", id: "kfOverList", label: "定価超え", options: [["all", "全て"], ["yes", "定価超えで売れているもののみ"]],
     apply: (q, v) => (v === "yes" ? q.eq("定価超え", true) : q) },
   // 中古出品者数：新品と同じく、空欄（出品者が居ない）も含める。未取得の行は除く
-  { key: "kfUsedSellers", id: "kfUsedSellers", label: "中古出品者数",
-    options: [["all", "全て"], ["0", "0人"], ["3", "3人以下"], ["5", "5人以下"], ["10", "10人以下"]],
-    apply: (q, v) => (v === "all" ? q : q.not("初回取得日時", "is", null)),
-    ors: (v) => (v === "all" ? null : `中古_出品者数.is.null,中古_出品者数.lte.${Number(v)}`) },
+  ...sellerRangeFilters("kfUsedSellers", "中古出品者数", "中古_出品者数"),
   // Amazon本体(現在)：Amazon価格が空欄＝今は出品なし（未取得の行は除く）
   { key: "kfAmazon", id: "kfAmazon", label: "Amazon本体(現在)", options: [["all", "全て"], ["none", "出品なし"], ["sell", "出品あり"]],
     apply: (q, v) => (v === "none" ? q.is("Amazon価格", null).not("初回取得日時", "is", null)
       : v === "sell" ? q.not("Amazon価格", "is", null) : q) },
-  { key: "kfRank", id: "kfRank", label: "ランキング(7日最高)",
-    options: [["all", "全て"], ["10000", "1万位以内"], ["50000", "5万位以内"], ["100000", "10万位以内"]],
-    apply: (q, v) => (v === "all" ? q : q.lte("大ランキング順位最小_7日", Number(v))) },
+  ...rangeFilters("kfRank", "ランキング(7日最高)", "大ランキング順位最小_7日", RANK_STEPS, (n) => `${n.toLocaleString()}位`),
   ...rangeFilters("kfOos90", "Amazon在庫切れ率(90日)", "Amazon在庫切れ率_90日", PERCENT_STEPS, (n) => `${n}%`),
   { key: "kfShipSize", id: "kfShipSize", label: "配送サイズ",
     options: [["all", "全て"], ...SHIP_SIZES.map((s) => [s, /^\d+$/.test(s) ? `${s}サイズ` : s])],
@@ -2413,25 +2413,25 @@ function keepaGroupedChecksHtml(items, categories, groupOf) {
 const KEEPA_DEFAULT_PATTERN = "デフォルト";
 const KEEPA_DEFAULT_KEYS = ["kfKeyword", "kfMaker", "kfStock", "kfScore", "kfProfit", "kfBuy", "kfBuyProfit",
   "kfCategory", "kfDrops30", "kfSellers"];
-const KEEPA_DEFAULT_VALUES = { kfScoreMin: "70", kfProfitMin: "1500", kfCategory: "おもちゃ", kfDrops30: "8" };
+const KEEPA_DEFAULT_VALUES = { kfScoreMin: "70", kfProfitMin: "1500", kfCategory: "おもちゃ", kfDrops30Min: "8" };
 // 用途別の固定パターン（コードで固定。上書き・削除はできない）
 // keys＝表示する項目、values＝選んだときに入れる条件（id→値。書いていない項目は「全て」・空に戻す）
 const KEEPA_PRESET_PATTERNS = {
   // 売価更新用：今扱える商品（在庫あり）で、ランキングが良く、実際に売れている
   "売価更新用": {
     keys: ["kfKeyword", "kfMaker", "kfStock", "kfRank", "kfDrops30", "kfDrops7", "kfScore", "kfCategory"],
-    values: { kfStock: "在庫数_TC,在庫数_自社", kfRank: "50000", kfDrops30: "1" },
+    values: { kfStock: "在庫数_TC,在庫数_自社", kfRankMax: "50000", kfDrops30Min: "1" },
   },
   // 探すやつ：売れ筋のある商品（発注用にも使う）。10万位以内・Amazonが長期的に出品していない・売れた実績あり
   // （売れ筋パターン「Amazon不在」＝90日間ずっとAmazon本体の在庫が無い。Amazonが一度も出品していない商品も含む）
   "探すやつ": {
     keys: ["kfKeyword", "kfMaker", "kfRank", "kfPattern", "kfDrops30", "kfScore", "kfProfit", "kfSellers", "kfCategory"],
-    values: { kfRank: "100000", kfPattern: "Amazon不在", kfDrops30: "1" },
+    values: { kfRankMax: "100000", kfPattern: "Amazon不在", kfDrops30Min: "1" },
   },
   // 買うやつ：買い時のある商品（刈り取り・在庫として保管）。ランキングが良い（5万位以内）・割引率50%以上（半額以下）
   "買うやつ": {
     keys: ["kfKeyword", "kfMaker", "kfRank", "kfDiscount", "kfBuy", "kfBuyProfit", "kfDrops30", "kfCategory"],
-    values: { kfRank: "50000", kfDiscount: "50" },
+    values: { kfRankMax: "50000", kfDiscountMin: "50" },
   },
 };
 // 上書き・削除できないパターン名（デフォルト＋固定パターン）

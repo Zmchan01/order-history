@@ -2198,14 +2198,31 @@ function cleanKeyword(v) {
   return v.replace(/["\\*%,()]/g, " ").trim();
 }
 // 範囲指定（下限〜上限）のプルダウン2つ分の定義を作る（2つとも key＝idBase で、表示・非表示は一緒に切り替わる）
-function rangeFilters(idBase, label, column, steps, unitText) {
+// extra に { custom: true } を渡すと、選択肢の最後に「その他」を付け、選ぶと数字を手入力できる
+function rangeFilters(idBase, label, column, steps, unitText, extra = {}) {
   const opts = (none) => [["all", none], ...steps.map((n) => [String(n), unitText(n)])];
   return [
-    { key: idBase, id: idBase + "Min", label, range: "start", options: opts("下限なし"),
+    { key: idBase, id: idBase + "Min", label, range: "start", options: opts("下限なし"), ...extra,
       apply: (q, v) => (v === "all" ? q : q.gte(column, Number(v))) },
-    { key: idBase, id: idBase + "Max", label: "〜", range: "end", options: opts("上限なし"),
+    { key: idBase, id: idBase + "Max", label: "〜", range: "end", options: opts("上限なし"), ...extra,
       apply: (q, v) => (v === "all" ? q : q.lte(column, Number(v))) },
   ];
+}
+// 「その他」付きの欄：値は hidden の入力欄（id＝項目のid）に持ち、プルダウン（id＋Sel）と数字入力（id＋Num）は表示用
+// hidden の値（all・選択肢の値・手入力の数字）に合わせて、プルダウンと数字入力の表示をそろえる
+function syncKeepaCustomFields() {
+  for (const f of KEEPA_FILTERS) {
+    if (!f.custom) continue;
+    const hidden = document.getElementById(f.id);
+    if (!hidden) continue;
+    const sel = document.getElementById(f.id + "Sel");
+    const num = document.getElementById(f.id + "Num");
+    const v = hidden.value || "all";
+    const isOption = f.options.some(([o]) => o === v);
+    sel.value = isOption ? v : "custom";
+    num.hidden = isOption;
+    num.value = isOption ? "" : v;
+  }
 }
 // 出品者数（新品・中古）の範囲指定：空欄（出品者が居ない）は0人として扱う。指定したときは未取得の行を除く
 // 下限0人は「空欄も含む全部」、下限1人以上は空欄を含まない。上限は「空欄 または ○人以下」
@@ -2222,8 +2239,8 @@ function sellerRangeFilters(idBase, label, column) {
   ];
 }
 // 範囲指定の選択肢（回数・個数・順位）
-const DROP30_STEPS = [0, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 45, 60];
-const DROP90_STEPS = [0, 3, 6, 12, 18, 24, 30, 45, 60, 90, 135, 180];
+// 売れた回数（30日・90日）：5回刻み＋「その他」で手入力
+const DROP_STEPS = [5, 10, 15, 20, 25, 30];
 const HIGH30_STEPS = [0, 1, 2, 3, 4, 5, 10, 15, 20, 30];
 const MONTHLY_STEPS = [0, 10, 20, 30, 50, 100, 200, 300, 500, 1000];
 const RANK_STEPS = [1000, 3000, 5000, 10000, 20000, 30000, 50000, 100000, 200000, 300000, 500000];
@@ -2294,7 +2311,7 @@ const KEEPA_FILTERS = [
   { key: "kfCategory", id: "kfCategory", label: "大ランキング名",
     options: [["all", "全て"], ...KEEPA_CATEGORIES.map((c) => [c, c])],
     apply: (q, v) => (v === "all" ? q : q.eq("大ランキング名", v)) },
-  ...rangeFilters("kfDrops30", "売れた回数(30日)", "大ランキング下降回数_30日", DROP30_STEPS, (n) => `${n}回`),
+  ...rangeFilters("kfDrops30", "売れた回数(30日)", "大ランキング下降回数_30日", DROP_STEPS, (n) => `${n}回`, { custom: true }),
   // 新品出品者数：空欄（出品者が居ない）も「0人」扱いで含める。未取得の行は除く
   ...sellerRangeFilters("kfSellers", "新品出品者数", "新品_出品者数"),
   // ここから下は、初期（デフォルト）では表示しない項目（フィルター設定でチェックすると表示）
@@ -2319,7 +2336,7 @@ const KEEPA_FILTERS = [
   // 割引率：参考価格に対して今の新品最安値が何%安いか（ビュー keepa情報_在庫込み で計算。参考価格が無い商品は除かれる）
   ...rangeFilters("kfDiscount", "割引率", "割引率", PERCENT_STEPS, (n) => `${n}%`),
   ...rangeFilters("kfMonthly", "月間販売数", "月間販売数", MONTHLY_STEPS, (n) => `${n.toLocaleString()}個`),
-  ...rangeFilters("kfDrops90", "売れた回数(90日)", "大ランキング下降回数_90日", DROP90_STEPS, (n) => `${n}回`),
+  ...rangeFilters("kfDrops90", "売れた回数(90日)", "大ランキング下降回数_90日", DROP_STEPS, (n) => `${n}回`, { custom: true }),
   // 直近7日の売れ：「売れなし」は下降回数が空欄か0の行（未取得の行は除く）
   { key: "kfDrops7", id: "kfDrops7", label: "直近7日の売れ", options: [["all", "全て"], ["yes", "売れあり"], ["no", "売れなし"]],
     apply: (q, v) => (v === "yes" ? q.gte("大ランキング下降回数_7日", 1) : v === "no" ? q.not("初回取得日時", "is", null) : q),
@@ -2822,6 +2839,7 @@ function applyKeepaPatternValues(name) {
       document.querySelectorAll(`input[data-for="${f.id}"]`).forEach((cb) => { cb.checked = on.has(cb.value); });
     }
   }
+  syncKeepaCustomFields();
   // メーカーの選択（保存値は選んだメーカー名のJSON配列）
   keepaMakerSelected.clear();
   try {
@@ -2883,8 +2901,13 @@ function renderKeepaFilters() {
       html += keepaMakerFieldHtml(f);
       continue;
     }
-    const select = `<select id="${f.id}">${f.options
-      .map(([v, t]) => `<option value="${escapeKeepa(v)}">${escapeKeepa(t)}</option>`).join("")}</select>`;
+    const optionHtml = f.options.map(([v, t]) => `<option value="${escapeKeepa(v)}">${escapeKeepa(t)}</option>`).join("");
+    // 「その他」付きの欄は、表示用のプルダウン＋数字入力＋値を持つ hidden の入力欄
+    const select = f.custom
+      ? `<select id="${f.id}Sel" data-custom-for="${f.id}">${optionHtml}<option value="custom">その他</option></select>` +
+        `<input type="number" id="${f.id}Num" data-custom-for="${f.id}" min="0" step="1" placeholder="数字" style="width:5em" hidden>` +
+        `<input type="hidden" id="${f.id}" value="all">`
+      : `<select id="${f.id}">${optionHtml}</select>`;
     if (f.range === "start") {
       // 範囲指定の下限側：ラベルと下限・上限のプルダウンを1つの枠にまとめる
       html += `<div class="filter-field">${keepaFilterLabel(f)}${select}`;
@@ -2914,6 +2937,25 @@ function renderKeepaFilters() {
     }
   }
   if (prevPageSize) document.getElementById("kfPageSize").value = prevPageSize;
+  syncKeepaCustomFields();
+  // 「その他」付きの欄：プルダウン・数字入力を変えたら hidden の値を更新する
+  // （「その他」で数字が空・数字以外のときは指定なし＝all）
+  row.querySelectorAll("[data-custom-for]").forEach((el) => {
+    el.addEventListener("input", () => {
+      const id = el.dataset.customFor;
+      const sel = document.getElementById(id + "Sel");
+      const num = document.getElementById(id + "Num");
+      const custom = sel.value === "custom";
+      num.hidden = !custom;
+      const n = num.value.trim();
+      document.getElementById(id).value = custom ? (/^\d+$/.test(n) ? n : "all") : sel.value;
+      if (custom && el === sel) num.focus();
+    });
+  });
+  // 数字入力でEnterを押したときも検索する
+  row.querySelectorAll("input[type=number][data-custom-for]").forEach((el) => {
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("kfSearch").click(); });
+  });
 
   // フィルター設定：ポップアップを開く
   document.getElementById("kfSettings").addEventListener("click", () => {
@@ -2963,6 +3005,8 @@ function renderKeepaFilters() {
     }
     // チェックボックス（在庫数）も外す
     row.querySelectorAll("input[type=checkbox][data-for]").forEach((cb) => { cb.checked = false; });
+    // 「その他」付きの欄の表示も「下限なし・上限なし」に戻す
+    syncKeepaCustomFields();
     // メーカーの選択も外す
     keepaMakerSelected.clear();
     syncKeepaMakerSelected();

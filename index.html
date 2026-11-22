@@ -2986,8 +2986,27 @@ function applyKeepaFilters(q) {
   return q;
 }
 
-// 指定ページの100件と総件数をSupabaseから取得して表示する
+// 読み込みの通し番号：最後に始めた読み込み（最後に送信・検索・ページ移動・並び替えした条件）の結果だけを表示する
+// （前の読み込みが遅れて返ってきても、画面を上書きしない）
+let keepaLoadSeq = 0;
+// 件数を数えた条件（同じ条件でページ移動・並び替えだけしたときは数え直さない）
+let keepaCountKey = null;
+// 今表示しているページの件数（件数が数えきれなかったときのページ送り用）
+let keepaShownCount = 0;
+
+// 件数の部分の表示（数え中・数えきれなかった場合も含む）
+function keepaCaptionText(from) {
+  const range = `${(from + 1).toLocaleString()}〜${(from + keepaShownCount).toLocaleString()}件目（${keepaSortLabel()}）`;
+  if (keepaTotal === undefined) return `件数を数えています… ${range}`;
+  if (keepaTotal === null) return `件数を数えきれませんでした（条件を絞ると表示されます） ${range}`;
+  return `全${keepaTotal.toLocaleString()}件中 ${range}`;
+}
+
+// 指定ページの一覧と総件数をSupabaseから取得して表示する
+// 一覧と件数は別々に取得する（それぞれに8秒の制限があるため。件数が重くても一覧は先に出す）
 async function loadKeepaPage(page) {
+  const seq = ++keepaLoadSeq;
+  const isLatest = () => seq === keepaLoadSeq;
   const caption = document.getElementById("keepaListCaption");
   caption.textContent = "読み込み中...";
   // 初回だけ絞り込み欄を描画する（在庫数欄を非表示にしても毎回描き直さないよう、フラグで判定）
@@ -2998,32 +3017,52 @@ async function loadKeepaPage(page) {
     // 前回、値を持つパターン（売価更新用等・値を保存したパターン）を選んでいたら、その条件で最初から取得する
     if (applyKeepaPatternValues(keepaPatternState.current)) keepaAppliedFilters = collectKeepaFilters();
   }
+  if (!isLatest()) return;
   const from = (page - 1) * keepaPageSize;
+  // 件数：条件が前回と同じなら数え直さない。違えば一覧と同時に数え始める
+  const countKey = JSON.stringify(keepaAppliedFilters);
+  let countPromise = null;
+  if (countKey !== keepaCountKey) {
+    keepaCountKey = countKey;
+    keepaTotal = undefined;   // 数えている途中
+    const cq = applyKeepaFilters(supabaseClient.from("keepa情報_在庫込み").select("ASIN", { count: "exact", head: true }));
+    countPromise = cq.then(({ count, error }) => {
+      if (keepaCountKey !== countKey) return;   // その間に条件が変わった
+      // 数えきれなかったときは null（同じ条件のままのページ移動では数え直さず、DBの負荷を増やさない）
+      if (error) { console.error(error); keepaTotal = null; }
+      else keepaTotal = count ?? 0;
+    });
+  }
   try {
     // ビュー keepa情報_在庫込み（keepa情報＋別テーブル keepa情報_在庫 の在庫数_自社・在庫数_TC）から読む
     let q = supabaseClient
       .from("keepa情報_在庫込み")
-      .select([...KEEPA_COLUMNS, "在庫数_自社", "在庫数_TC", "割引率"].join(","), { count: "exact" });
+      .select([...KEEPA_COLUMNS, "在庫数_自社", "在庫数_TC", "割引率"].join(","));
     q = applyKeepaFilters(q);
     // 並び替え：▲▼で指定した順（先に選んだ項目ほど優先）。空欄は常に最後、全部同じ値ならASIN順
     for (const s of keepaSorts) q = q.order(keepaSortDbCol(s.col), { ascending: s.asc, nullsFirst: false });
-    const sortLabel = keepaSortLabel();
-    const { data, count, error } = await q
+    const { data, error } = await q
       .order("ASIN")
       .range(from, from + keepaPageSize - 1);
+    if (!isLatest()) return;   // 新しい読み込みが始まっていたら、この結果は表示しない
     if (error) throw error;
     keepaPage = page;
-    keepaTotal = count ?? 0;
+    keepaShownCount = data.length;
     keepaLoaded = true;
     renderKeepaTable(data);
     renderKeepaPagers();
-    const shownTo = from + data.length;
-    caption.textContent = keepaTotal
-      ? `全${keepaTotal.toLocaleString()}件中 ${(from + 1).toLocaleString()}〜${shownTo.toLocaleString()}件目（${sortLabel}）`
-      : "データがありません";
+    caption.textContent = !data.length && page === 1 ? "データがありません" : keepaCaptionText(from);
   } catch (e) {
     caption.textContent = "読み込みに失敗しました: " + e.message;
     console.error(e);
+    return;
+  }
+  // 件数が後から届いたら、件数の表示とページ送り（最後のページ番号）を更新する
+  if (countPromise) {
+    await countPromise;
+    if (!isLatest() || !keepaShownCount) return;
+    renderKeepaPagers();
+    caption.textContent = keepaCaptionText(from);
   }
 }
 
@@ -3035,16 +3074,18 @@ async function loadKeepaPage(page) {
 const KEEPA_TXT_CONFIRM_OVER = 10000;   // これより多いときは、取得に時間がかかるので確認する
 async function downloadKeepaTxt(btn) {
   if (!keepaLoaded) { alert("先に検索して一覧を表示してください。"); return; }
-  if (!keepaTotal) { alert("ダウンロードする商品がありません。"); return; }
-  if (keepaTotal > KEEPA_TXT_CONFIRM_OVER &&
-      !confirm(`${keepaTotal.toLocaleString()}件あります。取得に時間がかかりますが、ダウンロードしますか？`)) return;
+  if (!keepaShownCount && keepaPage === 1) { alert("ダウンロードする商品がありません。"); return; }
+  // 件数が分からない（数え中・数えきれなかった）ときは件数が多い可能性があるので確認する
+  const known = typeof keepaTotal === "number";
+  if ((!known || keepaTotal > KEEPA_TXT_CONFIRM_OVER) &&
+      !confirm(`${known ? keepaTotal.toLocaleString() + "件あります" : "件数が多い可能性があります"}。取得に時間がかかりますが、ダウンロードしますか？`)) return;
   const label = btn.textContent;
   btn.disabled = true;
   const cell = (v) => (v == null ? "" : String(v).replace(/[\t\r\n]+/g, " ").trim());
   const lines = [["商品名", "JAN", "個数", "メーカー名", "定価"].join("\t")];
   try {
     for (let from = 0; ; from += 1000) {
-      btn.textContent = `取得中 ${from.toLocaleString()}/${keepaTotal.toLocaleString()}`;
+      btn.textContent = `取得中 ${from.toLocaleString()}${known ? "/" + keepaTotal.toLocaleString() : "件"}`;
       let q = supabaseClient.from("keepa情報_在庫込み").select("ASIN,タイトル,JAN,採用_メーカー名,採用_定価");
       q = applyKeepaFilters(q);
       for (const s of keepaSorts) q = q.order(keepaSortDbCol(s.col), { ascending: s.asc, nullsFirst: false });
@@ -3232,7 +3273,10 @@ function escapeKeepa(s) {
 // 表の上下にページ送り（最初・前へ・ページ番号入力・次へ・最後）を描画する
 function renderKeepaPagers() {
   // 最終ページ番号＝総件数÷選択中の表示件数（切り上げ）
-  const last = Math.max(1, Math.ceil(keepaTotal / keepaPageSize));
+  // 件数がまだ分からない（数え中・数えきれなかった）ときは、今のページが満杯なら次のページまで進めるようにする
+  const last = typeof keepaTotal === "number"
+    ? Math.max(1, Math.ceil(keepaTotal / keepaPageSize))
+    : keepaPage + (keepaShownCount >= keepaPageSize ? 1 : 0);
   for (const id of ["keepaPagerTop", "keepaPagerBottom"]) {
     const el = document.getElementById(id);
     el.innerHTML = `
